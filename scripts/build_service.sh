@@ -38,6 +38,9 @@ NAME=$(get_lib_name)
 VERSION=$(get_lib_version)
 GIT_TAG=$(get_lib_tag)
 
+# Strip @kalisio part
+NAME=${NAME#*/}
+
 echo "About to build $NAME v$VERSION ..."
 
 load_env_files "$WORKSPACE_DIR/development/common/kalisio_dockerhub.enc.env"
