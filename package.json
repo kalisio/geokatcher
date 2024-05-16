@@ -32,7 +32,7 @@
     "debug": "cross-env NODE_ENV=development node --inspect=:9222 src/bin.js",
     "prod": "cross-env NODE_ENV=production node src/bin.js",
     "lint": "standard src/**/*.js test/**/*.js --fix",
-    "mocha": "cross-env NODE_CONFIG_DIR=./test/config/ mocha --exit",
+    "mocha": "cross-env NODE_ENV=test NODE_CONFIG_DIR=./test/config/ mocha --exit",
     "coverage": "c8 npm run mocha",
     "test": "npm run lint && npm run coverage"
   },

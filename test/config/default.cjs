@@ -21,5 +21,4 @@ config.db = {
   url: (containerized ? 'mongodb://mongodb:27018/geokatcher-test' : 'mongodb://127.0.0.1:27018/geokatcher-test')
 }
 config.dbUrl = (containerized ? 'mongodb://mongodb:27018/geokatcher-test' : 'mongodb://127.0.0.1:27018/geokatcher-test')
-config.env = 'test'
 module.exports = config
