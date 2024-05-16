@@ -57,7 +57,6 @@ const monitorsModel = {
       }
     )
 
-    this.kano = app.get('providers').get('kano')[0]
     this.app = app
     this.model = mongoose.model('monitors', monitorsSchema)
     // app.set('monitorsModel', Model);
@@ -232,7 +231,7 @@ const monitorsModel = {
    * @param {string} status - The status of the monitor.
    * @returns {Date} - The date and time if the action was run. null if the action was skipped.
    */
-  async runActions (monitorObject, status) {
+  async runActions (monitorObject, status,data) {
     const monitor = monitorObject.monitor
     const action = monitor.action
     const cooldown = action.cooldown*1000 ?? 0
@@ -241,7 +240,7 @@ const monitorsModel = {
     const onCooldown = now - lastActionRun < cooldown 
     if (status === 'still firing' && onCooldown) {
       this.app.logger.info(`Monitor ${monitor.name} is still firing but the cooldown is not over yet, skipping action`)
-      return null 
+      return  
     }
     
     this.app.logger.info(`Monitor ${monitor.name} is ${status}`)
@@ -249,7 +248,7 @@ const monitorsModel = {
     // so any listeners in the distributed system can react to the monitor status
     this.app.services['monitor'].emit(monitor.name, {status: status})
     if (!action.url) {
-      return null
+      return 
     }
 
     let actionInfo = {
@@ -277,20 +276,49 @@ const monitorsModel = {
         ]
       }
     }
-    if (action.type === 'discord-webhook') {
-      actionInfo.body = {
-        embeds: [
-          {
-            title: 'GeoKatcher',
-            fields: [
-              { name: 'Monitor', value: monitor.name },
-              { name: 'Status', value: status }
-            ],
-            color: status === 'firing' ? 0xf52a2a : status === 'still firing' ? 0xfc7703 : 0x03fc07
-          }
-        ]
+    if (action.type === 'crisis-webhook') {
+      actionInfo.body = {"organisation" : action.crisisProperties.organisation}
+      actionInfo.headers.Authorization = "Bearer " + action.crisisProperties.token
+      // On firing, we create a crisis event
+      if (status === 'firing') {
+        actionInfo.body.data = {
+          template: action.crisisProperties.data.template,
+          name : action.crisisProperties.data.name || monitor.name,
+          description : action.crisisProperties.data.description || monitor.description,
+        }
+        // we add the location if the data is not empty
+        if (data.length > 0) {
+          actionInfo.body.data.location = {
+            type: "Feature",
+            geometry:{
+              "type":  "GeometryCollection",
+              "geometries": [data[0].firstElementFeatures.geometry].concat(data[0].secondElementFeatures.map((feature) => feature.geometry))
+            },
+            "properties": {
+              "name": monitor.name,
+              "date": monitor.lastRun.date,
+              "condition": monitor.evaluation.type,
+              "alertOn": monitor.evaluation.alertOn,
+            }
+         }
+        }
+      } 
+
+      // On no longer firing, we close the crisis event
+      else if (status === 'no longer firing') {
+        actionInfo.body.operation = "remove"
+        actionInfo.body.id = action.crisisProperties.knownAlertId
+        // remove the knownAlertId from the monitor
+        delete monitor.lastRun.knownAlertId
       }
-    }
+
+      // On still firing we ignore the action
+      else {
+        return
+      }
+
+      }
+
     if (action.type === 'custom-request') {
       // we replace the string "%monitorName%" and %monitorStatus% with the name of the monitor in the body and headers and the url
       actionInfo.url = actionInfo.url.replace(/%monitorName%/g, monitor.name).replace(/%monitorStatus%/g, status)
@@ -307,10 +335,16 @@ const monitorsModel = {
     // if the request was not successful, we log the error
     if (!res.ok) {
       this.app.logger.error(`Error while sending ${action.type} for monitor ${monitor.name}: ${res.statusText}`)
+      const responseText = await res.text()
+      this.app.logger.error(`Response: ${responseText}`)
     }
-
-    // we return the date and time of the action run
-    return now
+    // if the action was crisis-webhook and the status was firing, we store the knownAlertId in the monitor
+    if (action.type === 'crisis-webhook' && status === 'firing') {
+      const response = await res.json()
+      monitor.action.crisisProperties.knownAlertId = response._id
+    }
+    // we update the lastActionRun date
+    monitor.lastRun.lastActionRun = now
   },
   /**
    * Determines the firing status of a monitor based on the evaluation criteria set in the monitor object and the data received as input.
@@ -353,13 +387,9 @@ const monitorsModel = {
    */
 async function handleServiceEvents (monitorsModel, data, event) {
   const serviceName = data.path.split('/')[1] // ex : api/features -> features
-
-  for (const monitor of Object.values(monitorsModel.activeMonitors)) {
-    if (monitor.monitor.monitor.type !== 'event' || !monitor.monitor.monitor.trigger.includes(event)) {
-      // If the monitor is not an event monitor or the event is not the one we are looking for, we skip it
-      continue;
-    }
-
+  const activeEventMonitors = Object.values(monitorsModel.activeMonitors).filter(monitor => monitor.monitor.monitor.type === 'event' && monitor.monitor.monitor.trigger.includes(event))
+  // Only get the monitors that are of type event and that have the event in their trigger
+  for (const monitor of activeEventMonitors) {
     if (serviceName !== monitor.monitor.firstElement.layerInfo.kanoService && serviceName !== monitor.monitor.secondElement.layerInfo.kanoService) {
       // if the service name is not the one we are looking for, we skip it
       continue;
@@ -411,20 +441,15 @@ async function runMonitor(monitorObject) {
   // Determine the firing status of the monitor based on the evaluation result
   const alertStatus = this.determineFiringStatus(monitorObject, data);
 
-  // Run actions based on the firing status and get the timestamp of the last action run
+  // Run actions based on the firing status
   if(alertStatus !== 'not firing'){
-    const lastActionRun =  await this.runActions(monitorObject, alertStatus);
-    if (lastActionRun) {
-      monitorObject.monitor.lastRun.lastActionRun = lastActionRun;
-    }
+    await this.runActions(monitorObject, alertStatus,data.result);
   }
 
   // Update the monitor object
   monitorObject.monitor.lastRun.alert = alertStatus;
   monitorObject.monitor.lastRun.status = data.status;
   monitorObject.monitor.lastRun.date = new Date()
-
-
 
 
   // Update the monitor object in the database

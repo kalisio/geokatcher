@@ -8,7 +8,7 @@ import feathers from '@feathersjs/feathers'
 import configuration from '@feathersjs/configuration'
 import express from '@feathersjs/express'
 import distribution from '@kalisio/feathers-distributed'
-import { Providers } from './providers.js'
+import { initKano } from './providers/index.js'
 import hooks from './hooks.js'
 import routes from './routes.js'
 import middlewares from './middlewares.js'
@@ -24,7 +24,7 @@ feathers.setDebug(makeDebug)
 const debug = makeDebug('geokatcher:main')
 
 export async function createServer () {
-  var app = express(feathers())
+  const app = express(feathers())
   app.configure(configuration())
   app.use(cors());
 
@@ -47,40 +47,29 @@ export async function createServer () {
     app.logger.error('Unhandled Rejection: ', reason)
   })
 
-
+  // Set up database
   mongoose.Promise = global.Promise
   mongoose.connect(app.get('dbUrl'))
   
+  // Set up json parser
   app.use(express.json())
   app.configure(express.rest())
-  
+
   // Get distributed services
   app.configure(distribution(app.get('distribution')))
-  await Providers.initialize(app)
-  app.set('providers', Providers)
-  debug('Providers initialized', _.map(Providers.get(), 'name'))
+  const kano = await initKano(app)
+  app.set('kano', kano)
+
   
+
   // Set up our services (see `services/index.js`)
   app.configure(services);
   
-
-
-
-
+  
   // Register hooks
   app.hooks(hooks)
 
-
-
-
-
-
   // Configure API routes
-  
-  
-
-
-
   const port = app.get('port')
   app.logger.info('Configuring HTTP server at port ' + port.toString())
   const server = await app.listen(port)
