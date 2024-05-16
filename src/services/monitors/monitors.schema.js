@@ -61,9 +61,9 @@ const forCreation = Joi.object({
 
     monitor: Joi.object({
         name: Joi.string().when('type', { is: 'dryRun', then: Joi.optional(), otherwise: Joi.required() }),
-        description: Joi.string().default(''),
+        description: Joi.string().empty('').default(''),
         type: Joi.string().valid('cron', 'event', 'dryRun').required(),
-        enabled: Joi.boolean().default(true),  
+        enabled: Joi.boolean().default(true),
         // if the type is cron, trigger is required and needs to be a string that is a valid cron expression
         // if the type is event, trigger is required and needs to be an array of strings
         // if the type is dryRun, trigger is optional (not needed) 
@@ -90,8 +90,8 @@ const forCreation = Joi.object({
 
             crisisProperties: Joi.object({
                 organisation: Joi.string().required(),
-                template : Joi.string().required(),
                 token: Joi.string().required(),
+                data : Joi.object().required(),
             }).when('type', {
                 is: 'crisis-webhook',
                 then: Joi.required(),
@@ -156,8 +156,8 @@ const forUpdate = Joi.object({
 
             crisisProperties: Joi.object({
                 organisation: Joi.string().required(),
-                template : Joi.string().required(),
                 token: Joi.string().required(),
+                data : Joi.object().required(),
             }).when('type', {
                 is: 'crisis-webhook',
                 then: Joi.required(),
@@ -231,8 +231,8 @@ function validatePatchSchema(currentMonitor,newData){
                 // NEEDS TO BE REFINED
                 crisisProperties: Joi.object({
                     organisation: Joi.string().default(currentMonitor.monitor.action?.crisisProperties?.organisation),
-                    template : Joi.string().default(currentMonitor.monitor.action?.crisisProperties?.template),
                     token: Joi.string().default(currentMonitor.monitor.action?.crisisProperties?.token),
+                    data : Joi.object().default(currentMonitor.monitor.action?.crisisProperties?.data),
                 }).when('type', {
                     is: 'crisis-webhook',
                     then: Joi.required(),
