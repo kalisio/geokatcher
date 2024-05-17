@@ -2,6 +2,7 @@ import { mongoose } from 'mongoose'
 import { escape, unescape } from 'mongo-escape'
 import { stripSlashes } from '@feathersjs/commons'
 import { find } from 'mingo'
+import  fetch  from 'node-fetch'
 
 import _ from 'lodash'
 import cron from 'node-cron'
