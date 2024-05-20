@@ -6,9 +6,9 @@
 
 **geoKatcher** is a service that allows to monitor geofences between two layers of geospatial data.<br>
 for now only the following sources are supported:
-- Kalisio Maps ([_Kano_]("https://github.com/kalisio/kano"))
+- Kalisio Maps ([_Kano_](https://github.com/kalisio/kano))
 
-Using the [feathers]('https://github.com/feathersjs/feathers') framework, and [feathers-distributed]("https://github.com/kalisio/feathers-distributed") extension.<br>
+Using the [feathers](https://github.com/feathersjs/feathers) framework, and [feathers-distributed](https://github.com/kalisio/feathers-distributed) extension.<br>
 GeoKatcher can discover Kano services and query them to retrieve layers and features. Additionally, it can publish its `monitor` service, allowing other services to interact with it and receive events.
 
 <details open>
