@@ -23,7 +23,7 @@ GeoKatcher can discover Kano services and query them to retrieve layers and feat
   - [Monitor Element](#monitor-element)
     - [Evaluation](#evaluation)
     - [Action](#action)
-      - [Additional Properties (crises-webhook)](#additional-properties-crises-webhook)
+      - [Additional Properties (crisis-webhook)](#additional-properties-crisis-webhook)
       - [Additional Properties (custom-request)](#additional-properties-custom-request)
 
     
@@ -149,8 +149,8 @@ in case of a dryRun, the following fields are not required :
 | _additionalProperties_ | Additional properties for the action | ``Object`` | only for `crisis-webhook` and `custom-request` type | `Required` |
 
 
-#### ⮑⮑ <u>Additional Properties :</u> (crises-webhook)
-###### Additional Properties (crises-webhook)
+#### ⮑⮑ <u>Additional Properties :</u> (crisis-webhook)
+###### Additional Properties (crisis-webhook)
 
 
 | Field       | Description                           | Type | Constraints | Presence |
