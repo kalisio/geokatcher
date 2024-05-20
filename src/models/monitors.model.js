@@ -439,16 +439,18 @@ async function runMonitor(monitorObject) {
     monitorObject.firstElement.layerInfo = escapedMonitorObject.firstElement.layerInfo;
   }
 
-  // Determine the firing status of the monitor based on the evaluation result
-  const alertStatus = this.determineFiringStatus(monitorObject, data);
+  // Determine the firing status of the monitor based on the evaluation result, but only if the monitor is successful
+  if (escapedMonitorObject.monitor.status?.success){
+    const alertStatus = this.determineFiringStatus(monitorObject, data);
 
-  // Run actions based on the firing status
-  if(alertStatus !== 'not firing'){
-    await this.runActions(monitorObject, alertStatus,data.result);
+    // Run actions based on the firing status
+    if(alertStatus !== 'not firing'){
+      await this.runActions(monitorObject, alertStatus,data.result);
+    }
+    monitorObject.monitor.lastRun.alert = alertStatus;
   }
 
   // Update the monitor object
-  monitorObject.monitor.lastRun.alert = alertStatus;
   monitorObject.monitor.lastRun.status = data.status;
   monitorObject.monitor.lastRun.date = new Date()
 

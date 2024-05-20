@@ -28,14 +28,13 @@ export function parseQuery (hook) {
 */
 export async function checkIfNameAlreadyExists (hook) {
   const monitorName = _.get(hook, 'data.monitor.name')
-  const query = {
-    'monitor.name': monitorName,
-    ...(hook.event !== 'created' ? { '_id': { $ne: convertToObjectId(hook.id) } } : {})
-  };
 
-  var OtherMonitorExist
-  OtherMonitorExist = (await hook.service.find({"query" : query})).length > 0
-
+  // we check if a monitor with the same name already exists
+  const OtherMonitorExist = (await hook.service.find({'monitor.name': monitorName}))
+    // we remove the monitor that is currently being created/updated from the list
+    // we do that outside of the query to work around the error "Can't use params" when using $ne
+    .filter((monitor) => monitor._id.toString() !== hook.id)
+    .length > 0;
 
 
   // we can't create a monitor with the same name

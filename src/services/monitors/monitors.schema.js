@@ -37,6 +37,58 @@ function validateTrigger(value, helpers) {
 
 
 /**
+ * Custom validation function to insure that the additional properties are valid based on the monitor action type
+ * @param {*} value 
+ * @param {*} helpers 
+ * @returns the value if it is valid, otherwise a joi error
+ */
+function validateAdditionalProperties(value, helpers) {
+    const type = helpers.state.ancestors[0].type;
+    switch (type) {
+        case 'crisis-webhook':
+            // the only field allowed are [organisation, token, data] and in data [template,name,description]
+            if (!value.organisation || typeof value.organisation !== 'string') {return helpers.error('any.invalid', { type, value, message: 'if \"monitor.action.type\" is \"crisis-webhook\", \"monitor.action.aditionalProperties.organisation\" is required' });}
+            if (!value.token || typeof value.token !== 'string') {return helpers.error('any.invalid', { type, value, message: 'if \"monitor.action.type\" is \"crisis-webhook\", \"monitor.action.aditionalProperties.token\" is required' });}
+            if (!value.data || typeof value.data !== 'object') {return helpers.error('any.invalid', { type, value, message: 'if \"monitor.action.type\" is \"crisis-webhook\", \"monitor.action.aditionalProperties.data\" is required' });}
+            if (!value.data.template || typeof value.data.template !== 'string') {return helpers.error('any.invalid', { type, value, message: 'if \"monitor.action.type\" is \"crisis-webhook\", \"monitor.action.aditionalProperties.data.template\" is required' });}
+            
+            // check recursively the fields, only [organisation, token, data, template, name, description] are allowed
+            for (const key in value) {
+                if (!['organisation', 'token', 'data'].includes(key)) {
+                    return helpers.error('any.invalid', { type, value, message: 'if \"monitor.action.type\" is \"crisis-webhook\", \"monitor.action.aditionalProperties.data.'+key+'\" is not allowed' });
+                }
+                if (key === 'data') {
+                    for (const dataKey in value.data) {
+                        if (!['template', 'name', 'description'].includes(dataKey)) {
+                            return helpers.error('any.invalid', { type, value, message: 'if \"monitor.action.type\" is \"crisis-webhook\", \"monitor.action.aditionalProperties.data.'+dataKey+'\" is not allowed' });
+                        }
+                    }
+                }
+            }
+
+            return value;
+        case 'custom-request':
+            // doesn't include ['get', 'post', 'put', 'delete'] will be invalid
+            if (!value.method || ['get', 'post', 'put', 'delete'].indexOf(value.method) === -1){return helpers.error('any.invalid', { type, value, message: 'if \"monitor.action.type\" is \"custom-request\", \"monitor.action.aditionalProperties.method\" must be one of [get, post, put, delete]' });}
+            if (!value.headers || typeof value.headers !== 'object') {
+                value.headers = {};
+            }
+            if (!value.body || typeof value.body !== 'object') {
+                value.body = {};
+            }
+            // check recursively the fields, only [method, headers, body] are allowed
+            for (const key in value) {
+                if (!['method', 'headers', 'body'].includes(key)) {
+                    return helpers.error('any.invalid', { type, value, message: 'if \"monitor.action.type\" is \"custom-request\", \"monitor.action.aditionalProperties.data.'+key+'\" is not allowed' });
+                }
+            }
+            return value;
+    }
+}
+
+
+
+/**
  * Schema for creating a monitor (POST method)
  * - monitor.type can be cron, event or dryRun
  * - depending on the type, monitor.trigger has different requirements
@@ -88,25 +140,13 @@ const forCreation = Joi.object({
             cooldown: Joi.number().positive().default(60),
             url: Joi.string().uri().required(),
 
-            crisisProperties: Joi.object({
-                organisation: Joi.string().required(),
-                token: Joi.string().required(),
-                data : Joi.object().required(),
-            }).when('type', {
-                is: 'crisis-webhook',
-                then: Joi.required(),
+            aditionnalProperties: Joi.object().when('type', {
+                is: Joi.valid('crisis-webhook', 'custom-request'),
+                then: Joi.custom(validateAdditionalProperties).required(),
                 otherwise: Joi.forbidden()
-            }),
+            })
+                
 
-            customProperties: Joi.object({
-                method: Joi.string().valid('GET', 'POST', 'PUT', 'DELETE').default('POST'),
-                headers: Joi.object().default({}),
-                body: Joi.object().default({})
-            }).when('type', {
-                is: 'custom-request',
-                then: Joi.optional(),
-                otherwise: Joi.forbidden()
-            }).default({})
 
         }).default({})
     }).required()
@@ -154,25 +194,13 @@ const forUpdate = Joi.object({
             cooldown: Joi.number().positive().default(60),
             url: Joi.string().uri().required(),
 
-            crisisProperties: Joi.object({
-                organisation: Joi.string().required(),
-                token: Joi.string().required(),
-                data : Joi.object().required(),
-            }).when('type', {
-                is: 'crisis-webhook',
-                then: Joi.required(),
+            aditionnalProperties: Joi.object().when('type', {
+                is: Joi.valid('crisis-webhook', 'custom-request'),
+                then: Joi.custom(validateAdditionalProperties).required(),
                 otherwise: Joi.forbidden()
-            }),
+            })
 
-            customProperties: Joi.object({
-                method: Joi.string().valid('GET', 'POST', 'PUT', 'DELETE').default('POST'),
-                headers: Joi.object().default({}),
-                body: Joi.object().default({})
-            }).when('type', {
-                is: 'custom-request',
-                then: Joi.optional(),
-                otherwise: Joi.forbidden()
-            }).default({})
+            
 
         }).default({})
     }).required()
@@ -189,6 +217,7 @@ function validatePatchSchema(currentMonitor,newData){
     // and we need verify that if we change the type, the trigger is compatible
     _.set(newData, 'monitor.type', _.get(newData, 'monitor.type', currentMonitor.monitor.type));
     _.set(newData, 'monitor.trigger', _.get(newData, 'monitor.trigger', currentMonitor.monitor.trigger));
+    _.set(newData, 'monitor.action.type', _.get(newData, 'monitor.action.type', currentMonitor.monitor.action.type));
 
 
     const schema =  Joi.object({
@@ -228,28 +257,15 @@ function validatePatchSchema(currentMonitor,newData){
                 cooldown: Joi.number().positive().default(currentMonitor.monitor.action?.cooldown),
                 url: Joi.string().uri().default(currentMonitor.monitor.action?.url),
 
-                // NEEDS TO BE REFINED
-                crisisProperties: Joi.object({
-                    organisation: Joi.string().default(currentMonitor.monitor.action?.crisisProperties?.organisation),
-                    token: Joi.string().default(currentMonitor.monitor.action?.crisisProperties?.token),
-                    data : Joi.object().default(currentMonitor.monitor.action?.crisisProperties?.data),
-                }).when('type', {
-                    is: 'crisis-webhook',
-                    then: Joi.required(),
+                aditionnalProperties: Joi.object().when('type', {
+                    is: Joi.valid('crisis-webhook', 'custom-request'),
+                    then: Joi.custom(validateAdditionalProperties).required(),
                     otherwise: Joi.forbidden()
-                }).default(currentMonitor.monitor.action?.crisisProperties),
-
-                customProperties: Joi.object({
-                    method: Joi.string().valid('GET', 'POST', 'PUT', 'DELETE').default('POST'),
-                    headers: Joi.object().default(currentMonitor.monitor.action?.customProperties?.headers),
-                    body: Joi.object().default(currentMonitor.monitor.action?.customProperties?.body)
-                }).when('type', {
-                    is: 'custom-request',
-                    then: Joi.optional(),
-                    otherwise: Joi.forbidden()
-                }).default(currentMonitor.monitor.action?.customProperties),
+                })
 
             }).default(currentMonitor.monitor.action),
+
+
         }).default(currentMonitor.monitor)
     });
     return schema.validate(newData);

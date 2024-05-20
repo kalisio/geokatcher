@@ -3,7 +3,7 @@ const path = require('path')
 const winston = require('winston')
 
 const host = process.env.HOSTNAME || 'localhost'
-const dbUrl = process.env.DB_URL || 'mongodb://192.168.0.253:27017/geokatcher'
+const dbUrl = process.env.DB_URL || 'mongodb://localhost:27017/geokatcher'
 const port = process.env.PORT || 8080
 const apiPath = process.env.API_PREFIX || '/api'
 const baseUrl = process.env.BASE_URL || `http://${host}:${port}`
