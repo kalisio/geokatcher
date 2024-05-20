@@ -1,4 +1,7 @@
 # geoKatcher
+[![CI](https://github.com/kalisio/geokatcher/actions/workflows/main.yaml/badge.svg)](https://github.com/kalisio/geokoder/actions/workflows/main.yaml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 **Kalisio geofencing service**
 
 **geoKatcher** is a service that allows to monitor geofences between two layers of geospatial data.<br>
