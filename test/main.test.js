@@ -18,7 +18,13 @@ const wait = (ms = 9000000) => new Promise(resolve => setTimeout(resolve, ms))
 var server, app, kapp, catalogService, defaultLayers, featuresService, hubeauHydroStationsService
 var globals = {server, app, kapp, catalogService, defaultLayers, featuresService, hubeauHydroStationsService}
 before(() => {
-  execSync('docker exec mongo-test mongo geokatcher-test --eval "db.dropDatabase()"')
+  try {
+    // temporary to clear the database before running the tests
+    execSync('docker exec mongo-test mongo geokatcher-test --eval "db.dropDatabase()"')
+  } catch (e) {
+    console.log(e)
+  }
+
   chailint(chai, util)
 })
 
