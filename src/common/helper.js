@@ -9,7 +9,6 @@ export function generateObjectId () {
   return new mongoose.Types.ObjectId()
 }
 
-
 export function convertToObjectId (id) {
   return new mongoose.Types.ObjectId(id)
 }
@@ -23,5 +22,3 @@ export function convertToObjectId (id) {
 export function isObjectId (id) {
   return mongoose.Types.ObjectId.isValid(id)
 }
-
-

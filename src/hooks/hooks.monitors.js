@@ -1,6 +1,6 @@
 import _ from 'lodash'
 import { escape, unescape } from 'mongo-escape'
-import { generateObjectId,isObjectId,convertToObjectId } from '../common/helper.js'
+import { generateObjectId, isObjectId } from '../common/helper.js'
 import monitorsModel from '../models/monitors.model.js'
 import ferrors from '@feathersjs/errors'
 import monitorSchema from '../services/monitors/monitors.schema.js'
@@ -30,27 +30,27 @@ export async function checkIfNameAlreadyExists (hook) {
   const monitorName = _.get(hook, 'data.monitor.name')
 
   // we check if a monitor with the same name already exists
-  const OtherMonitorExist = (await hook.service.find({'monitor.name': monitorName}))
+  const OtherMonitorExist = (await hook.service.find({ 'monitor.name': monitorName }))
     // we remove the monitor that is currently being created/updated from the list
     // we do that outside of the query to work around the error "Can't use params" when using $ne
-    .filter((monitor) => monitor._id.toString() !== hook.id)
-    .length > 0;
+    .filter((monitor) => monitor._id.toString() !== hook.id.toString())
+    .length > 0
 
 
   // we can't create a monitor with the same name
-  if (OtherMonitorExist && hook.event === 'created' ) {
+  if (OtherMonitorExist && hook.event === 'created') {
     throw new ferrors.Conflict('Monitor with the same name already exists', { monitor: monitorName })
   }
 
   // we can't update a monitor to have the same name as another monitor
-    if (OtherMonitorExist && ['updated', 'patched'].includes(hook.event)) {
+  if (OtherMonitorExist && ['updated', 'patched'].includes(hook.event)) {
     throw new ferrors.Conflict('Monitor with the same name already exists', { monitor: monitorName })
   }
 
   return hook
 }
 /**
- * Checks if a monitor exists based on the identifier provided in the hook 
+ * Checks if a monitor exists based on the identifier provided in the hook
  *
  * @param {Hook} hook Hook object
  * @returns {Promise<Hook>}
@@ -75,20 +75,22 @@ export async function checkIfMonitorExists (hook) {
 export async function validateMonitorStructure (hook) {
   let validationResult
   switch (hook.event) {
-
-    case 'created':
+    case 'created': {
       validationResult = monitorSchema.forCreation.validate(hook.data)
       hook.id = generateObjectId()
-      break;
-      
-    case 'updated':
-      validationResult = monitorSchema.forUpdate.validate(hook.data)
-      break;
+      break
+    }
 
-    case 'patched':
+    case 'updated': {
+      validationResult = monitorSchema.forUpdate.validate(hook.data)
+      break
+    }
+
+    case 'patched': {
       const currentMonitor = await hook.service.get(hook.id)
       validationResult = monitorSchema.validatePatchSchema(currentMonitor, hook.data)
-      break;
+      break
+    }
   }
 
   if (validationResult.error) {
@@ -101,7 +103,6 @@ export async function validateMonitorStructure (hook) {
 
   return hook
 }
-
 
 /**
  * Escape the data object to be saved in the mongoDB database
@@ -149,7 +150,7 @@ export async function runEvaluation (hook) {
     date: new Date(),
     lastActionRun: _.get(monitorObject, 'monitor.lastRun.lastActionRun', 0),
     alert: alert,
-    status: result.status,
+    status: result.status
   }
 
   // if the monitor is a dryRun, we return the result of the evaluation
@@ -165,9 +166,9 @@ export async function runEvaluation (hook) {
  * @param {Hook} hook Hook object
  * @returns {Promise<Hook>}
  */
-export function startMonitor (hook) {
-  if (hook.data.monitor.enabled && hook.data.monitor.type != 'dryRun') {
-    monitorsModel.startMonitor(hook.data)
+export async function startMonitor (hook) {
+  if (hook.data.monitor.enabled && hook.data.monitor.type !== 'dryRun') {
+    await monitorsModel.startMonitor(hook.data)
   }
   return hook
 }
@@ -178,11 +179,20 @@ export function startMonitor (hook) {
  * @returns {Promise<Hook>}
  */
 export function stopMonitor (hook) {
-  // if the monitor is removed and enabled, we stop it
-  if (hook.event === 'removed' && hook.result.monitor.enabled) {
-    monitorsModel.stopMonitor(hook.result)
-  } else if (['patch', 'update'].includes(hook.method) && hook.data.monitor && hook.data.monitor.enabled) {
-    monitorsModel.stopMonitor(hook.data)
+  if (Array.isArray(hook.result)) {
+    hook.result.forEach((result) => {
+      if (hook.event === 'removed' && result.monitor.enabled) {
+        monitorsModel.stopMonitor(result)
+      } else if (['patch', 'update'].includes(hook.method) && result.monitor && result.monitor.enabled) {
+        monitorsModel.stopMonitor(result)
+      }
+    })
+  } else {
+    if (hook.event === 'removed' && hook.result.monitor.enabled) {
+      monitorsModel.stopMonitor(hook.result)
+    } else if (['patch', 'update'].includes(hook.method) && hook.data.monitor && hook.data.monitor.enabled) {
+      monitorsModel.stopMonitor(hook.data)
+    }
   }
   return hook
 }
@@ -198,7 +208,7 @@ export async function resetMonitor (hook) {
     monitorsModel.stopMonitor(currentMonitor)
   }
   if (hook.data.monitor.enabled) {
-    monitorsModel.startMonitor(hook.data)
+    await monitorsModel.startMonitor(hook.data)
   }
   return hook
 }

@@ -1,10 +1,9 @@
 import _ from 'lodash'
 import makeDebug from 'debug'
-import { errors  as ferrors } from '@feathersjs/errors'
+import { errors as ferrors } from '@feathersjs/errors'
 import { stripSlashes } from '@feathersjs/commons'
 
 const debug = makeDebug('geokatcher:providers:kano')
-
 
 export async function initKano (app) {
   const apiPath = app.get('apiPath')
@@ -13,9 +12,11 @@ export async function initKano (app) {
     if (kanoServiceAvailable()) {
       clearInterval(interval)
       app.logger.info('Kano services are ready')
+      debug('Kano services are ready')
       app.emit('kano:ready')
     } else {
       app.logger.info('Waiting for Kano services to be ready...')
+      debug('Waiting for Kano services to be ready...')
     }
   }, 2000)
 
@@ -30,7 +31,7 @@ export async function initKano (app) {
      * @returns {Promise<boolean>} - A promise that resolves to true if the Kano services are ready, and false otherwise.
      */
     areKanoServicesReady () {
-        return kanoServiceAvailable()
+      return kanoServiceAvailable()
     },
 
     /**
@@ -42,37 +43,36 @@ export async function initKano (app) {
      * @throws {ferrors.NotFound} - If the layer is not found.
      */
     async getLayerData (name) {
-        if (!name) {
-          throw new ferrors.BadRequest('Layer name is required')
+      if (!name) {
+        throw new ferrors.BadRequest('Layer name is required')
+      }
+      if (!await kanoServiceAvailable()) {
+        throw new ferrors.Unavailable('Kano services are not ready')
+      }
+      const catalog = app.service(`${apiPath}/catalog`)
+      const layer = await catalog.find({
+        query: {
+          $and: [
+            {
+              $or: [
+                { service: { $exists: true } },
+                { probeService: { $exists: true } }
+              ]
+            },
+            {
+              $or: [
+                { name: `Layers.${name.toUpperCase()}` },
+                { name: name }
+              ]
+            }
+          ]
         }
-        if (!await kanoServiceAvailable()) {
-          throw new ferrors.Unavailable('Kano services are not ready')
-        }
-        const catalog = app.service(`${apiPath}/catalog`)
-        const layer = await catalog.find({
-          query: {
-            $and: [
-              {
-                $or: [
-                  { service: { $exists: true } },
-                  { probeService: { $exists: true } }
-                ]
-              },
-              {
-                $or: [
-                  { name: `Layers.${name.toUpperCase()}` },
-                  { name: name }
-                ]
-              }
-            ]
-          }
-        })
-        if (!layer.data || layer.data.length === 0) {
-          throw new ferrors.NotFound('Layer not found', { layer: name })
-        }
-        return layer.data[0]
+      })
+      if (!layer.data || layer.data.length === 0) {
+        throw new ferrors.NotFound('Layer not found', { layer: name })
+      }
+      return layer.data[0]
     },
-
 
     /**
      * Retrieve the features of a layer based on the provided layer object and filter.
@@ -84,38 +84,38 @@ export async function initKano (app) {
      * @throws {ferrors.GeneralError} - If the query results were limited by the service.
      */
     async getLayerFeatures (layer, filter) {
-        if (!await kanoServiceAvailable()) {
-          throw new ferrors.Unavailable('Kano services are not ready')
+      if (!await kanoServiceAvailable()) {
+        throw new ferrors.Unavailable('Kano services are not ready')
+      }
+      if (!layer) {
+        throw new ferrors.BadRequest('Layer is required')
+      }
+      let query = {}
+      // collection is serviceProbe (if exists) or service
+      const collection = _.get(layer, 'probeService', layer.service)
+      // If the collection is features, we need to add the layer to the query to only get the features of the layer
+      if (collection === 'features') {
+        query = {
+          layer: layer._id
         }
-        if (!layer) {
-          throw new ferrors.BadRequest('Layer is required')
+      }
+      // If a filter is provided we need to add it to the query
+      if (filter) {
+        query = {
+          ...query,
+          ...filter
         }
-        let query = {}
-        // collection is serviceProbe (if exists) or service
-        const collection = _.get(layer, 'probeService', layer.service)
-        // If the collection is features, we need to add the layer to the query to only get the features of the layer
-        if (collection == 'features') {
-          query = {
-            layer: layer._id
-          }
-        }
-        // If a filter is provided we need to add it to the query
-        if (filter) {
-          query = {
-            ...query,
-            ...filter
-          }
-        }
-        const service = app.service(`${apiPath}/${collection}`)
-        const result = await service.find({
-          query: query
-        })
+      }
+      const service = app.service(`${apiPath}/${collection}`)
+      const result = await service.find({
+        query: query
+      })
 
-        // if result.total is bigger than the size of result.features, we need to throw an error
-        if (result.total > result.features.length) {
-          throw new ferrors.GeneralError('Query results were limited by the service.', { layer: layer.name, service: collection, total: result.total, returned: result.features.length })
-        }
-        return result
+      // if result.total is bigger than the size of result.features, we need to throw an error
+      if (result.total > result.features.length) {
+        throw new ferrors.GeneralError('Query results were limited by the service.', { layer: layer.name, service: collection, total: result.total, returned: result.features.length })
+      }
+      return result
     },
 
     /**
@@ -128,56 +128,52 @@ export async function initKano (app) {
      * @throws {GeneralError} - If the query for the layer was limited by the service.
      */
     async compareLayers (firstElementFeatureCollection, secondElementLayer, secondElementFilter, monitor) {
-        const firstElementFeatures = []
-        const collection = _.get(secondElementLayer, 'probeService', secondElementLayer.service)
-        const service = app.services[stripSlashes(`${apiPath}/${collection}`)]
+      const firstElementFeatures = []
+      const collection = _.get(secondElementLayer, 'probeService', secondElementLayer.service)
+      const service = app.services[stripSlashes(`${apiPath}/${collection}`)]
 
-        // For each feature geometry inside secondElement, we need to check if it is inside the firstElement geometry
-        await Promise.all(firstElementFeatureCollection.features.map(async (zone) => {
-          let geometry
-          let query = {}
-          // We get the geometry query to inject in the query based on the evaluation type
-          try {
-            geometry = injectGeoQuery(monitor, zone)
-          } catch (err) {
-            if (err instanceof ferrors.NotAcceptable) {
-              app.logger.error(err.message)
-              return
-            }
-            // If we have an other error, we let the error propagate to the caller
-            throw err
+      // For each feature geometry inside secondElement, we need to check if it is inside the firstElement geometry
+      await Promise.all(firstElementFeatureCollection.features.map(async (zone) => {
+        let geometry
+        let query = {}
+        // We get the geometry query to inject in the query based on the evaluation type
+        try {
+          geometry = injectGeoQuery(monitor, zone)
+        } catch (err) {
+          if (err instanceof ferrors.NotAcceptable) {
+            app.logger.error(err.message)
+            return
           }
-          if (secondElementFilter) {
-            query.$and = [
-              secondElementFilter,
-              geometry
-            ]
-          } else {
-            query = geometry
-          }
-          if (collection == 'features') {
-            query.layer = secondElementLayer._id
-          }
+          // If we have an other error, we let the error propagate to the caller
+          throw err
+        }
+        if (secondElementFilter) {
+          query.$and = [
+            secondElementFilter,
+            geometry
+          ]
+        } else {
+          query = geometry
+        }
+        if (collection === 'features') {
+          query.layer = secondElementLayer._id
+        }
 
-          // console.log(`Query: ${JSON.stringify(query)} on collection ${collection}`)
-          const result = await service.find({ query: query })
-          if (result.total != result.features.length) {
-            throw new ferrors.GeneralError('Query for the layer was limited by the service.', { layer: secondElementLayer.name, service: collection, total: result.total, returned: result.features.length })
-          }
-          // We return the feature and the zone that intersect
-          if (result.total > 0) {
-            firstElementFeatures.push({ firstElementFeatures: zone, secondElementFeatures: result.features.map((feature) => feature) })
-          }
-        }))
-        return firstElementFeatures
+        // console.log(`Query: ${JSON.stringify(query)} on collection ${collection}`)
+        const result = await service.find({ query: query })
+        if (result.total !== result.features.length) {
+          throw new ferrors.GeneralError('Query for the layer was limited by the service.', { layer: secondElementLayer.name, service: collection, total: result.total, returned: result.features.length })
+        }
+        // We return the feature and the zone that intersect
+        if (result.total > 0) {
+          firstElementFeatures.push({ firstElementFeatures: zone, secondElementFeatures: result.features.map((feature) => feature) })
+        }
+      }))
+      return firstElementFeatures
     }
 
   }
 }
-
-
-
-
 
 /**
  * Injects a geometry query based on the evaluation type and feature.
@@ -193,7 +189,7 @@ function injectGeoQuery (monitor, feature) {
   switch (evaluation) {
     case 'geoWithin':
       // geoWithin can only be used with Polygon or MultiPolygon geometries
-      if (feature.geometry.type != 'Polygon' && feature.geometry.type != 'MultiPolygon') {
+      if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') {
         throw new ferrors.NotAcceptable(`Invalid geometry type for evaluation type [${monitor.evaluation.type}] and zone [${feature.geometry.type}] : This zone will be ignored`)
       }
       geometry = {
@@ -216,11 +212,11 @@ function injectGeoQuery (monitor, feature) {
       break
     case 'near':
       // near can only be used with Point geometries
-      if (feature.geometry.type != 'Point') {
+      if (feature.geometry.type !== 'Point') {
         throw new ferrors.NotAcceptable(`Invalid geometry type for evaluation type [${monitor.evaluation.type}] and zone [${feature.geometry.type}] : This zone will be ignored`)
       }
       monitor.evaluation.maxDistance = (typeof monitor.evaluation.maxDistance === 'number' ? monitor.evaluation.maxDistance : 1000)
-      monitor.evaluation.minDistance = (typeof monitor.evaluation.minDistance === 'number' ? monitor.evaluation.minDistance : 0) 
+      monitor.evaluation.minDistance = (typeof monitor.evaluation.minDistance === 'number' ? monitor.evaluation.minDistance : 0)
 
       geometry = {
         $and: [
@@ -249,7 +245,6 @@ function injectGeoQuery (monitor, feature) {
       //     }
       //   }
       // }
-
 
       break
     default:
