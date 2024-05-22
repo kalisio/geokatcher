@@ -1,12 +1,14 @@
 import { mongoose } from 'mongoose'
-import { escape, unescape } from 'mongo-escape'
+import { unescape } from 'mongo-escape'
 import { stripSlashes } from '@feathersjs/commons'
+import makeDebug from 'debug'
 import { find } from 'mingo'
-import  fetch  from 'node-fetch'
+import fetch from 'node-fetch'
 
 import _ from 'lodash'
 import cron from 'node-cron'
 
+const debug = makeDebug('geokatcher:models:monitors')
 const monitorsModel = {
   kano: null,
   app: null,
@@ -65,14 +67,14 @@ const monitorsModel = {
   },
 
   /**
-   * Start all the monitors that are enabled in the database
+   * Start the existing monitors that are enabled
    */
   startExistingMonitors () {
     this.model.find({ 'monitor.enabled': true }).then((monitors) => {
-      monitors.forEach((monitorObject) => {
+      monitors.forEach(async (monitorObject) => {
         // if the monitor is enabled and not already running
         if (!(this.activeMonitors[monitorObject._id])) {
-          this.startMonitor(monitorObject.toObject())
+          await this.startMonitor(monitorObject.toObject())
         }
       })
     })
@@ -85,14 +87,14 @@ const monitorsModel = {
     * @returns {Object}  The data that match the evaluation
     */
   async evaluate (monitorObject, throwError = false) {
-    let data= {}
+    const data = {}
     let error
     let firstElementLayer
     let secondElementLayer
     let firstElementFeatureCollection
     try {
       // If the source isn't inRequest, we need to get the layer data from the provider (Kano)
-      if (_.get(monitorObject.firstElement, 'source') != 'inRequest') {
+      if (_.get(monitorObject.firstElement, 'source') !== 'inRequest') {
         firstElementLayer = await this.kano.getLayerData(monitorObject.firstElement.name).catch((err) => {
           throw err
         })
@@ -107,7 +109,7 @@ const monitorsModel = {
         )
         // If the feature collection is empty, we stop the evaluation, there won't be any data to compare
         if (!firstElementFeatureCollection.features) {
-          return 
+          return
         }
         // The Kano service and layerId are added to the monitorObject to be able to use them for future events on the service
         monitorObject.firstElement.layerInfo = {
@@ -116,7 +118,7 @@ const monitorsModel = {
         }
       }
       // If the source isn't inRequest, we need to get the layer data from the provider (Kano)
-      if (_.get(monitorObject.secondElement, 'source') != 'inRequest') {
+      if (_.get(monitorObject.secondElement, 'source') !== 'inRequest') {
         secondElementLayer = await this.kano.getLayerData(monitorObject.secondElement.name).catch((err) => {
           throw err
         })
@@ -141,13 +143,13 @@ const monitorsModel = {
       )
     } catch (err) {
       error = err
-      
+
       // if throwError is true, we escalate the error to the caller
       if (throwError) {
         throw error
-      }
-      else{
+      } else {
         this.app.logger.error(`Error while evaluating monitor ${monitorObject.monitor.name}: ${error.message}`)
+        debug('Error while evaluating monitor %s: %O', monitorObject.monitor.name, error)
       }
     } finally {
       data.status = { success: !error, ...(error ? { error: { message: error.message, data: error.data } } : {}) }
@@ -160,56 +162,56 @@ const monitorsModel = {
      * @param {Object} monitorObject  The monitor object to start
      * @note The monitor is started with the cron library, the monitor will be evaluated at the trigger time
      * @todo Add the possibility to start the monitor with real time events from the provider
+     * @returns {Promise<void>}
      */
-  startMonitor (monitorObject) {
-      if (monitorObject.monitor.type === 'cron') {
-        if (this.activeMonitors[monitorObject._id]) {
-          this.app.logger.info(`Monitor ${monitorObject.monitor.name} was already running, stopping it`)
-          this.activeMonitors[monitorObject._id].cron.stop()
-        }
-
-        const cronjob = cron.schedule(
-          monitorObject.monitor.trigger,
-          async () => {
-            await runMonitor.bind(this)(monitorObject)
-          }
-        )
-
-        this.activeMonitors[monitorObject._id] = { cron: cronjob, monitor: monitorObject }
+  async startMonitor (monitorObject) {
+    if (monitorObject.monitor.type === 'cron') {
+      if (this.activeMonitors[monitorObject._id]) {
+        this.app.logger.info(`Monitor ${monitorObject.monitor.name} was already running, stopping it`)
+        debug('Monitor %s was already running, stopping it', monitorObject.monitor.name)
+        this.activeMonitors[monitorObject._id].cron.stop()
       }
 
-      if (monitorObject.monitor.type === 'event') {
-        const apiPath = this.app.get('apiPath')
-        const firstElementServiceName = _.get(monitorObject, 'firstElement.layerInfo.kanoService', null)
-        const secondElementServiceName = _.get(monitorObject, 'secondElement.layerInfo.kanoService', null)
-        const apiPathSlash = stripSlashes(apiPath)
-        const firstElementService = this.app.services[`${apiPathSlash}/${firstElementServiceName}`]
-        const secondElementService = this.app.services[`${apiPathSlash}/${secondElementServiceName}`]
+      const cronjob = cron.schedule(
+        monitorObject.monitor.trigger,
+        async () => {
+          await runMonitor.bind(this)(monitorObject)
+        }
+      )
 
-        if (!this.activeServices.includes(firstElementServiceName)) {
-          this.activeServices.push(firstElementServiceName)
-          this.allowedEvents.forEach((event) => {
-            firstElementService.on(event, async (data) => {
-              handleServiceEvents(this, data, event)
-            })
+      this.activeMonitors[monitorObject._id] = { cron: cronjob, monitor: monitorObject }
+    }
+
+    if (monitorObject.monitor.type === 'event') {
+      const apiPath = this.app.get('apiPath')
+      const firstElementServiceName = _.get(monitorObject, 'firstElement.layerInfo.kanoService', null)
+      const secondElementServiceName = _.get(monitorObject, 'secondElement.layerInfo.kanoService', null)
+      const apiPathSlash = stripSlashes(apiPath)
+      const firstElementService = this.app.services[`${apiPathSlash}/${firstElementServiceName}`]
+      const secondElementService = this.app.services[`${apiPathSlash}/${secondElementServiceName}`]
+
+      if (!this.activeServices.includes(firstElementServiceName)) {
+        this.activeServices.push(firstElementServiceName)
+        this.allowedEvents.forEach((event) => {
+          firstElementService.on(event, async (data) => {
+            handleServiceEvents(this, data, event)
           })
-        }
-        if (!this.activeServices.includes(secondElementServiceName)) {
-          this.activeServices.push(secondElementServiceName)
-          this.allowedEvents.forEach((event) => {
-            secondElementService.on(event, async (data) => {
-              handleServiceEvents(this, data, event)
-            })
+        })
+      }
+      if (!this.activeServices.includes(secondElementServiceName)) {
+        this.activeServices.push(secondElementServiceName)
+        this.allowedEvents.forEach((event) => {
+          secondElementService.on(event, async (data) => {
+            handleServiceEvents(this, data, event)
           })
-        }
+        })
+      }
 
-        this.activeMonitors[monitorObject._id] = { monitor: monitorObject }
-      }
-      this.app.logger.info(`Monitor ${monitorObject.monitor.name} started`)
-      async () => {
-        await runMonitor.bind(this)(monitorObject)
-      }
-    },
+      this.activeMonitors[monitorObject._id] = { monitor: monitorObject }
+    }
+    this.app.logger.info(`Monitor ${monitorObject.monitor.name} started`)
+    debug('Monitor %s started', monitorObject.monitor.name)
+  },
 
   /**
      * Stops and remove the monitor from the list of running monitors
@@ -222,41 +224,44 @@ const monitorsModel = {
       }
       delete this.activeMonitors[monitorObject._id]
       this.app.logger.info(`Monitor ${monitorObject.monitor.name} stopped`)
+      debug('Monitor %s stopped', monitorObject.monitor.name)
     }
   },
 
-/**
+  /**
    * Executes the actions associated with a monitor based on its status.
-   * 
+   *
    * @param {Object} monitorObject - The monitor object containing the monitor details.
    * @param {string} status - The status of the monitor.
    * @returns {Date} - The date and time if the action was run. null if the action was skipped.
    */
-  async runActions (monitorObject, status,data) {
+  async runActions (monitorObject, status, data) {
     const monitor = monitorObject.monitor
     const action = monitor.action
-    const cooldown = action.cooldown*1000 ?? 0
+    const cooldown = action.cooldown * 1000 ?? 0
     const now = new Date()
-    const lastActionRun = new Date(monitor.lastRun.lastActionRun) ?? 0 
-    const onCooldown = now - lastActionRun < cooldown 
+    const lastActionRun = new Date(monitor.lastRun.lastActionRun) ?? 0
+    const onCooldown = now - lastActionRun < cooldown
     if (status === 'still firing' && onCooldown) {
       this.app.logger.info(`Monitor ${monitor.name} is still firing but the cooldown is not over yet, skipping action`)
-      return  
-    }
-    
-    this.app.logger.info(`Monitor ${monitor.name} is ${status}`)
-    // Emit an event to the monitor service,
-    // so any listeners in the distributed system can react to the monitor status
-    this.app.services['monitor'].emit(monitor.name, {status: status})
-    if (!action.url) {
-      return 
+      debug('Monitor %s is still firing but the cooldown is not over yet, skipping action', monitor.name)
+      return
     }
 
-    let actionInfo = {
+    this.app.logger.info(`Monitor ${monitor.name} is ${status}`)
+    debug('Monitor %s is %s', monitor.name, status)
+    // Emit an event to the monitor service,
+    // so any listeners in the distributed system can react to the monitor status
+    this.app.services.monitor.emit(monitor.name, { status: status })
+    if (!action.url) {
+      return
+    }
+
+    const actionInfo = {
       url: action.url,
-      method : _.get(action, 'customProperties.method', 'POST'),
+      method: _.get(action, 'customProperties.method', 'POST'),
       body: _.get(action, 'customProperties.body', {}),
-      headers: _.get(action, 'customProperties.headers', {"Content-Type": "application/json"})
+      headers: _.get(action, 'customProperties.headers', { 'Content-Type': 'application/json' })
     } // we will store the default action info here to send it at the end
 
     if (action.type === 'slack-webhook') {
@@ -278,47 +283,42 @@ const monitorsModel = {
       }
     }
     if (action.type === 'crisis-webhook') {
-      actionInfo.body = {"organisation" : action.crisisProperties.organisation}
-      actionInfo.headers.Authorization = "Bearer " + action.crisisProperties.token
+      actionInfo.body = { organisation: action.crisisProperties.organisation }
+      actionInfo.headers.Authorization = 'Bearer ' + action.crisisProperties.token
       // On firing, we create a crisis event
       if (status === 'firing') {
         actionInfo.body.data = {
           template: action.crisisProperties.data.template,
-          name : action.crisisProperties.data.name || monitor.name,
-          description : action.crisisProperties.data.description || monitor.description,
+          name: action.crisisProperties.data.name || monitor.name,
+          description: action.crisisProperties.data.description || monitor.description
         }
         // we add the location if the data is not empty
         if (data.length > 0) {
           actionInfo.body.data.location = {
-            type: "Feature",
-            geometry:{
-              "type":  "GeometryCollection",
-              "geometries": [data[0].firstElementFeatures.geometry].concat(data[0].secondElementFeatures.map((feature) => feature.geometry))
+            type: 'Feature',
+            geometry: {
+              type: 'GeometryCollection',
+              geometries: [data[0].firstElementFeatures.geometry].concat(data[0].secondElementFeatures.map((feature) => feature.geometry))
             },
-            "properties": {
-              "name": monitor.name,
-              "date": monitor.lastRun.date,
-              "condition": monitor.evaluation.type,
-              "alertOn": monitor.evaluation.alertOn,
+            properties: {
+              name: monitor.name,
+              date: monitor.lastRun.date,
+              condition: monitor.evaluation.type,
+              alertOn: monitor.evaluation.alertOn
             }
-         }
+          }
         }
-      } 
-
-      // On no longer firing, we close the crisis event
-      else if (status === 'no longer firing') {
-        actionInfo.body.operation = "remove"
+      } else if (status === 'no longer firing') {
+        // On "no longer firing", we close the crisis event
+        actionInfo.body.operation = 'remove'
         actionInfo.body.id = action.crisisProperties.knownAlertId
         // remove the knownAlertId from the monitor
         delete monitor.lastRun.knownAlertId
-      }
-
-      // On still firing we ignore the action
-      else {
+      } else {
+        // On still firing we ignore the action
         return
       }
-
-      }
+    }
 
     if (action.type === 'custom-request') {
       // we replace the string "%monitorName%" and %monitorStatus% with the name of the monitor in the body and headers and the url
@@ -328,6 +328,7 @@ const monitorsModel = {
     }
     // we send the request
     this.app.logger.info(`Sending ${action.type} for monitor ${monitor.name}`)
+    debug('Sending %s for monitor %s', action.type, monitor.name)
     const res = await fetch(actionInfo.url, {
       method: actionInfo.method,
       headers: actionInfo.headers,
@@ -335,9 +336,9 @@ const monitorsModel = {
     })
     // if the request was not successful, we log the error
     if (!res.ok) {
-      this.app.logger.error(`Error while sending ${action.type} for monitor ${monitor.name}: ${res.statusText}`)
       const responseText = await res.text()
-      this.app.logger.error(`Response: ${responseText}`)
+      this.app.logger.error(`Error while sending ${action.type} for monitor ${monitor.name}: ${res.statusText} - ${responseText}`)
+      debug('Error while sending %s for monitor %s: %s', action.type, monitor.name, res.statusText)
     }
     // if the action was crisis-webhook and the status was firing, we store the knownAlertId in the monitor
     if (action.type === 'crisis-webhook' && status === 'firing') {
@@ -354,33 +355,33 @@ const monitorsModel = {
    * @returns {string} - The firing status of the monitor.
    * @note The firing status can be one of the following: 'firing', 'still firing', 'no longer firing', 'not firing'.
    */
-  determineFiringStatus(monitorObject, data) {
-    const { evaluation, lastRun } = monitorObject.monitor;
+  determineFiringStatus (monitorObject, data) {
+    const { evaluation, lastRun } = monitorObject.monitor
     const lastRunAlert = lastRun?.alert
-    const { alertOn } = evaluation;
-    const isDataEmpty = data.result.length === 0;
-    const wasFiring = lastRunAlert === 'firing' || lastRunAlert === 'still firing' 
+    const { alertOn } = evaluation
+    const isDataEmpty = data.result.length === 0
+    const wasFiring = lastRunAlert === 'firing' || lastRunAlert === 'still firing'
 
     if (alertOn === 'data') {
       if (isDataEmpty) {
-        return wasFiring ? 'no longer firing' : 'not firing';
+        return wasFiring ? 'no longer firing' : 'not firing'
       } else {
-        return wasFiring ? 'still firing' : 'firing';
+        return wasFiring ? 'still firing' : 'firing'
       }
     }
 
     if (alertOn === 'noData') {
       if (isDataEmpty) {
-        return wasFiring ? 'still firing' : 'firing';
+        return wasFiring ? 'still firing' : 'firing'
       } else {
-        return wasFiring ? 'no longer firing' : 'not firing';
+        return wasFiring ? 'no longer firing' : 'not firing'
       }
     }
   }
 }
 /**
    * Handles service events for monitors.
-   * 
+   *
    * @param {object} monitorsModel - The monitors model object.
    * @param {object} data - The data object received from the service event.
    * @param {string} event - The event type.
@@ -393,16 +394,16 @@ async function handleServiceEvents (monitorsModel, data, event) {
   for (const monitor of activeEventMonitors) {
     if (serviceName !== monitor.monitor.firstElement.layerInfo.kanoService && serviceName !== monitor.monitor.secondElement.layerInfo.kanoService) {
       // if the service name is not the one we are looking for, we skip it
-      continue;
+      continue
     }
 
-    if (serviceName === "features" && (data.layer !== monitor.monitor.firstElement.layerInfo.layerId && data.layer !== monitor.monitor.secondElement.layerInfo.layerId)) {
+    if (serviceName === 'features' && (data.layer !== monitor.monitor.firstElement.layerInfo.layerId && data.layer !== monitor.monitor.secondElement.layerInfo.layerId)) {
       // if the service is "features" and the layers are not the ones we are looking for, we skip it
-      continue;
+      continue
     }
 
     // get the element (firstElement or secondElement) that corresponds to the event
-    const dataElement = data.layer === monitor.monitor.firstElement.layerInfo.layerId ? monitor.monitor.firstElement : monitor.monitor.secondElement 
+    const dataElement = data.layer === monitor.monitor.firstElement.layerInfo.layerId ? monitor.monitor.firstElement : monitor.monitor.secondElement
     const dataFilter = unescape(dataElement.filter) ?? {}
     // if the data matches the filter, we run the monitor
     if (find([data], dataFilter).all().length > 0) {
@@ -411,56 +412,50 @@ async function handleServiceEvents (monitorsModel, data, event) {
   }
 }
 
-
 /**
    * Runs a monitor and updates its status based on the evaluation of data.
    *
    * @param {Object} monitorObject - The monitor object containing the necessary information for running the monitor.
    * @returns {Promise<void>} - A promise that resolves once the monitor object is updated in the database.
    */
-async function runMonitor(monitorObject) {
-  // Log the number of active monitors
-  this.app.logger.info(`Currently running ${Object.keys(this.activeMonitors).length} monitor(s)`);
+async function runMonitor (monitorObject) {
+  this.app.logger.info(`Currently running ${Object.keys(this.activeMonitors).length} monitor(s)`)
+  debug('Currently running %d monitor(s)', Object.keys(this.activeMonitors).length)
 
   // Create a deep copy of the monitor object and unescape it
-  const escapedMonitorObject = unescape(_.cloneDeep(monitorObject));
+  const escapedMonitorObject = unescape(_.cloneDeep(monitorObject))
 
   // Evaluate the monitor using the evaluate function
-  const data = await this.evaluate(escapedMonitorObject);
+  const data = await this.evaluate(escapedMonitorObject)
 
   // Update the lastRun property of the monitor object with the unescaped lastRun value
-  monitorObject.monitor.lastRun = escapedMonitorObject.monitor.lastRun;
+  monitorObject.monitor.lastRun = escapedMonitorObject.monitor.lastRun
 
   // Update the layerInfos in case they were not present / updated
   if (escapedMonitorObject.secondElement.layerInfo) {
-    monitorObject.secondElement.layerInfo = escapedMonitorObject.secondElement.layerInfo;
+    monitorObject.secondElement.layerInfo = escapedMonitorObject.secondElement.layerInfo
   }
   if (escapedMonitorObject.firstElement.layerInfo) {
-    monitorObject.firstElement.layerInfo = escapedMonitorObject.firstElement.layerInfo;
+    monitorObject.firstElement.layerInfo = escapedMonitorObject.firstElement.layerInfo
   }
 
   // Determine the firing status of the monitor based on the evaluation result, but only if the monitor is successful
-  if (escapedMonitorObject.monitor.status?.success){
-    const alertStatus = this.determineFiringStatus(monitorObject, data);
+  if (escapedMonitorObject.monitor.lastRun?.status?.success) {
+    const alertStatus = this.determineFiringStatus(monitorObject, data)
 
     // Run actions based on the firing status
-    if(alertStatus !== 'not firing'){
-      await this.runActions(monitorObject, alertStatus,data.result);
+    if (alertStatus !== 'not firing') {
+      await this.runActions(monitorObject, alertStatus, data.result)
     }
-    monitorObject.monitor.lastRun.alert = alertStatus;
+    monitorObject.monitor.lastRun.alert = alertStatus
   }
 
   // Update the monitor object
-  monitorObject.monitor.lastRun.status = data.status;
+  monitorObject.monitor.lastRun.status = data.status
   monitorObject.monitor.lastRun.date = new Date()
 
-
   // Update the monitor object in the database
-  await this.model.updateOne({ _id: monitorObject._id }, monitorObject);
+  await this.model.updateOne({ _id: monitorObject._id }, monitorObject)
 }
-
-
-
-
 
 export default monitorsModel
