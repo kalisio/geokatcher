@@ -18,7 +18,7 @@ config.distribution.remoteServices = (service) => (true)
 // This is for KDK test app
 config.db = {
   adapter: 'mongodb',
-  url: (containerized ? 'mongodb://mongodb:27018/geokatcher-test' : 'mongodb://127.0.0.1:27018/geokatcher-test')
+  url: (containerized ? 'mongodb://mongodb:27017/geokatcher-test' : 'mongodb://127.0.0.1:27017/geokatcher-test')
 }
-config.dbUrl = (containerized ? 'mongodb://mongodb:27018/geokatcher-test' : 'mongodb://127.0.0.1:27018/geokatcher-test')
+config.dbUrl = (containerized ? 'mongodb://mongodb:27017/geokatcher-test' : 'mongodb://127.0.0.1:27017/geokatcher-test')
 module.exports = config
