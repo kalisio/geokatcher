@@ -310,6 +310,7 @@ _*considering the filters_
 
 ⚠️ The services will only return the first 5000 features that match the query, if you have more than 5000 features that match the query, consider using a filter to reduce the number of features returned.
 
+
 ### Patching a monitor
 The patch operation updates only the fields provided in the request. Other fields will remain unchanged. However, certain internal fields need to be re-specified in the request even if they are not being updated, because they can be considered optional.
 
