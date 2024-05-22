@@ -4,7 +4,6 @@
 [![CI](https://github.com/kalisio/geokatcher/actions/workflows/main.yaml/badge.svg)](https://github.com/kalisio/geokatcher/actions/workflows/main.yaml)
 [![Code Climate](https://codeclimate.com/github/kalisio/geokatcher/badges/gpa.svg)](https://codeclimate.com/github/kalisio/geokatcher)
 [![Test Coverage](https://codeclimate.com/github/kalisio/geokatcher/badges/coverage.svg)](https://codeclimate.com/github/kalisio/geokatcher/coverage)
-[![Dependency Status](https://img.shields.io/david/kalisio/geokatcher.svg?style=flat-square)](https://david-dm.org/kalisio/geokatcher)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Kalisio geofencing service**
