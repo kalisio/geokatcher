@@ -14,7 +14,7 @@ export default function async (app) {
       Model,
       lean: true,
       paginate,
-      multi: ['delete', 'patch', 'update']
+      multi: ['remove', 'patch', 'update']
    };
    
    
