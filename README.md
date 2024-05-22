@@ -147,8 +147,8 @@ in case of a dryRun, the following fields are not required :
 ###### Action
 | Field       | Description                           | Type | Constraints | Presence |
 |-------------|---------------------------------------| ---- | ------- | ------- | 
-| type        | The type of the action  | ``String`` | ``slack-webhook``, ``crisis-webhook``, ``custom-request`` | `Required` |
-| url         | The url of the action  | ``String`` | ``valid url`` | `Required` |
+| type        | The type of the action  | ``String`` | ``slack-webhook``, ``crisis-webhook``, ``custom-request``,``no-webhook`` | `Optional`, default : `no-webhook` |
+| url         | The url of the action  | ``String`` | ``valid url``, | `Required` when not `no-webhook` |
 | cooldown    | The cooldown before next `Still firing` alert | ``Number`` seconds | ``>= 0`` | `Optional`, default : `60` |
 | _additionalProperties_ | Additional properties for the action | ``Object`` | only for `crisis-webhook` and `custom-request` type | `Required` |
 
@@ -230,7 +230,7 @@ The object returned by the service will have the following structure:
     "action": {
       "type": "crisis-webhook",
       "url": "https://crisis-service/api/webhooks/events",
-      "aditionnalProperties": {
+      "additionalProperties": {
         "organisation": "85c83f5084fe6644cf4f83bf",
         "token": "euzyfgnzeufhiuzefze",
         "data": {
