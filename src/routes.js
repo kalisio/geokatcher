@@ -77,6 +77,19 @@ export default function (app) {
   }
   )
 
+  app.post("/test3", async (req, res) => {
+
+    const apiPath = app.get('apiPath')
+    const service = app.services[stripSlashes(`${apiPath}/features`)]
+    let feature = await service.find({query: {"properties.deviceId": 19}})
+    const toSend = feature.features[0]
+    toSend.path = "api/features"
+
+    // emit a patch event without actually patching the feature
+    service.emit('patched', toSend)
+    res.status(200).json({message: "ok"})
+  })
+
   app.post("/clear", async (req, res) => {
     clearInterval(interval);
     res.status(200).json({message: "ok"})

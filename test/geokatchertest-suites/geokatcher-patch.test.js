@@ -7,8 +7,8 @@ async function geoKatcherPatchTest () {
   before(async () => {
     app = this.app
     baseMonitorObject = {
-      firstElement: {
-        name: 'firstElement',
+      targetLayer: {
+        name: 'targetLayer',
         filter: {
           'properties.name': 'randomname'
         }
@@ -36,32 +36,32 @@ async function geoKatcherPatchTest () {
   })
   it('patch the first element name with layer that does not exist should throw a NotFound with message "Layer not found', async () => {
     await expectError(() =>
-      app.service('monitor').patch(monitorObject._id, { firstElement: { name: 'xxx' } }),
+      app.service('monitor').patch(monitorObject._id, { targetLayer: { name: 'xxx' } }),
     'Layer not found')
   }).timeout(1000)
 
   it('patch only the first element should leave the rest of the object unchanged', async () => {
-    const patchedMonitor = await app.service('monitor').patch(monitorObject._id, { firstElement: { name: 'secondElement' } })
-    const omit = ['firstElement', 'monitor.lastRun', 'updatedAt']
+    const patchedMonitor = await app.service('monitor').patch(monitorObject._id, { targetLayer: { name: 'secondElement' } })
+    const omit = ['targetLayer', 'monitor.lastRun', 'updatedAt']
     expect(_.omit(patchedMonitor, omit)).to.deep.equal(_.omit(monitorObject, omit))
-    expect(patchedMonitor.firstElement.name).to.equal('secondElement')
+    expect(patchedMonitor.targetLayer.name).to.equal('secondElement')
     expect(patchedMonitor.updatedAt).to.not.equal(monitorObject.updatedAt)
     expect(patchedMonitor.monitor.lastRun).to.not.equal(monitorObject.monitor.lastRun)
   }).timeout(1000)
 
   it('patch the first element name with layer that does exist should return the patched object', async () => {
-    const patchedMonitor = await app.service('monitor').patch(monitorObject._id, { firstElement: { name: 'secondElement' } })
-    expect(patchedMonitor.firstElement.name).to.equal('secondElement')
+    const patchedMonitor = await app.service('monitor').patch(monitorObject._id, { targetLayer: { name: 'secondElement' } })
+    expect(patchedMonitor.targetLayer.name).to.equal('secondElement')
   }).timeout(1000)
 
   it('patch the first element name should reset the filters', async () => {
-    const patchedMonitor = await app.service('monitor').patch(monitorObject._id, { firstElement: { name: 'secondElement' } })
-    expect(patchedMonitor.firstElement.filter).to.equal(undefined)
+    const patchedMonitor = await app.service('monitor').patch(monitorObject._id, { targetLayer: { name: 'secondElement' } })
+    expect(patchedMonitor.targetLayer.filter).to.equal(undefined)
   }).timeout(1000)
 
   it('patch the first element filter should return the patched object with new filter', async () => {
-    const patchedMonitor = await app.service('monitor').patch(monitorObject._id, { firstElement: { filter: { 'properties.name': 'newName' } } })
-    expect(patchedMonitor.firstElement.filter).to.deep.equal({ 'properties.name': 'newName' })
+    const patchedMonitor = await app.service('monitor').patch(monitorObject._id, { targetLayer: { filter: { 'properties.name': 'newName' } } })
+    expect(patchedMonitor.targetLayer.filter).to.deep.equal({ 'properties.name': 'newName' })
   }).timeout(1000)
 
   it('patch the monitor trigger (event) with an invalid (event) trigger should throw a BadRequest ', async () => {

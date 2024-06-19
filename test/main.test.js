@@ -1,5 +1,4 @@
 
-import _ from 'lodash'
 import { execSync } from 'child_process'
 import chai, {util} from 'chai'
 import chailint from 'chai-lint'
@@ -12,19 +11,9 @@ import geoKatcherPatchTest from './geokatchertest-suites/geokatcher-patch.test.j
 import geoKatcherMonitorTest from './geokatchertest-suites/geokatcher-monitor.test.js'
 
 
-
-const wait = (ms = 9000000) => new Promise(resolve => setTimeout(resolve, ms))
-
 var server, app, kapp, catalogService, defaultLayers, featuresService, hubeauHydroStationsService
 var globals = {server, app, kapp, catalogService, defaultLayers, featuresService, hubeauHydroStationsService}
 before(() => {
-  try {
-    // temporary to clear the database before running the tests
-    execSync('docker exec mongo-test mongo geokatcher-test --eval "db.dropDatabase()"')
-  } catch (e) {
-    console.log(e)
-  }
-
   chailint(chai, util)
 })
 
@@ -36,3 +25,13 @@ describe('geokatcher:kano',kanoTest.bind(globals))
 describe('geokatcher:geokatcher-creation',geoKatcherSchemaTest.bind(globals))
 describe('geokatcher:geokatcher-patch',geoKatcherPatchTest.bind(globals))
 describe('geokatcher:geokatcher-monitor',geoKatcherMonitorTest.bind(globals))
+
+after(async() => {
+  // return
+  await globals.catalogService._remove(null, {query: {}})
+  await globals.featuresService._remove(null, {query: {}})
+  await globals.hubeauHydroStationsService._remove(null, {query: {}})
+  await globals.app.service('monitor')._remove(null, {query: {}})
+  if (globals.server) await globals.server.close()
+  await globals.kapp.teardown()
+})

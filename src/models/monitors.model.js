@@ -26,7 +26,7 @@ const monitorsModel = {
     const Schema = mongoose.Schema
     const monitorsSchema = new Schema(
       {
-        firstElement: {
+        targetLayer: {
           name: { type: String, required: true },
           filter: { type: Object, required: false },
           layerInfo: { type: Object, required: false }
@@ -89,32 +89,32 @@ const monitorsModel = {
   async evaluate (monitorObject, throwError = false) {
     const data = {}
     let error
-    let firstElementLayer
+    let targetLayerLayer
     let secondElementLayer
-    let firstElementFeatureCollection
+    let targetLayerFeatureCollection
     try {
       // If the source isn't inRequest, we need to get the layer data from the provider (Kano)
-      if (_.get(monitorObject.firstElement, 'source') !== 'inRequest') {
-        firstElementLayer = await this.kano.getLayerData(monitorObject.firstElement.name).catch((err) => {
+      if (_.get(monitorObject.targetLayer, 'source') !== 'inRequest') {
+        targetLayerLayer = await this.kano.getLayerData(monitorObject.targetLayer.name).catch((err) => {
           throw err
         })
 
         // If the layer is not found, we stop the evaluation, the error is already thrown
-        if (!firstElementLayer) {
+        if (!targetLayerLayer) {
           return
         }
-        firstElementFeatureCollection = await this.kano.getLayerFeatures(
-          firstElementLayer,
-          monitorObject.firstElement.filter
+        targetLayerFeatureCollection = await this.kano.getLayerFeatures(
+          targetLayerLayer,
+          monitorObject.targetLayer.filter
         )
         // If the feature collection is empty, we stop the evaluation, there won't be any data to compare
-        if (!firstElementFeatureCollection.features) {
+        if (!targetLayerFeatureCollection.features) {
           return
         }
         // The Kano service and layerId are added to the monitorObject to be able to use them for future events on the service
-        monitorObject.firstElement.layerInfo = {
-          kanoService: _.get(firstElementLayer, 'probeService', firstElementLayer.service),
-          layerId: firstElementLayer._id
+        monitorObject.targetLayer.layerInfo = {
+          kanoService: _.get(targetLayerLayer, 'probeService', targetLayerLayer.service),
+          layerId: targetLayerLayer._id
         }
       }
       // If the source isn't inRequest, we need to get the layer data from the provider (Kano)
@@ -136,7 +136,7 @@ const monitorsModel = {
 
       // Compare the two layers and return the data that match the evaluation
       data.result = await this.kano.compareLayers(
-        firstElementFeatureCollection,
+        targetLayerFeatureCollection,
         secondElementLayer,
         monitorObject.secondElement.filter,
         monitorObject.monitor
@@ -184,16 +184,16 @@ const monitorsModel = {
 
     if (monitorObject.monitor.type === 'event') {
       const apiPath = this.app.get('apiPath')
-      const firstElementServiceName = _.get(monitorObject, 'firstElement.layerInfo.kanoService', null)
+      const targetLayerServiceName = _.get(monitorObject, 'targetLayer.layerInfo.kanoService', null)
       const secondElementServiceName = _.get(monitorObject, 'secondElement.layerInfo.kanoService', null)
       const apiPathSlash = stripSlashes(apiPath)
-      const firstElementService = this.app.services[`${apiPathSlash}/${firstElementServiceName}`]
+      const targetLayerService = this.app.services[`${apiPathSlash}/${targetLayerServiceName}`]
       const secondElementService = this.app.services[`${apiPathSlash}/${secondElementServiceName}`]
 
-      if (!this.activeServices.includes(firstElementServiceName)) {
-        this.activeServices.push(firstElementServiceName)
+      if (!this.activeServices.includes(targetLayerServiceName)) {
+        this.activeServices.push(targetLayerServiceName)
         this.allowedEvents.forEach((event) => {
-          firstElementService.on(event, async (data) => {
+          targetLayerService.on(event, async (data) => {
             handleServiceEvents(this, data, event)
           })
         })
@@ -298,7 +298,7 @@ const monitorsModel = {
             type: 'Feature',
             geometry: {
               type: 'GeometryCollection',
-              geometries: [data[0].firstElementFeatures.geometry].concat(data[0].secondElementFeatures.map((feature) => feature.geometry))
+              geometries: [data[0].targetLayerFeatures.geometry].concat(data[0].secondElementFeatures.map((feature) => feature.geometry))
             },
             properties: {
               name: monitor.name,
@@ -392,18 +392,18 @@ async function handleServiceEvents (monitorsModel, data, event) {
   const activeEventMonitors = Object.values(monitorsModel.activeMonitors).filter(monitor => monitor.monitor.monitor.type === 'event' && monitor.monitor.monitor.trigger.includes(event))
   // Only get the monitors that are of type event and that have the event in their trigger
   for (const monitor of activeEventMonitors) {
-    if (serviceName !== monitor.monitor.firstElement.layerInfo.kanoService && serviceName !== monitor.monitor.secondElement.layerInfo.kanoService) {
+    if (serviceName !== monitor.monitor.targetLayer.layerInfo.kanoService && serviceName !== monitor.monitor.secondElement.layerInfo.kanoService) {
       // if the service name is not the one we are looking for, we skip it
       continue
     }
 
-    if (serviceName === 'features' && (data.layer !== monitor.monitor.firstElement.layerInfo.layerId && data.layer !== monitor.monitor.secondElement.layerInfo.layerId)) {
+    if (serviceName === 'features' && (data.layer !== monitor.monitor.targetLayer.layerInfo.layerId && data.layer !== monitor.monitor.secondElement.layerInfo.layerId)) {
       // if the service is "features" and the layers are not the ones we are looking for, we skip it
       continue
     }
 
-    // get the element (firstElement or secondElement) that corresponds to the event
-    const dataElement = data.layer === monitor.monitor.firstElement.layerInfo.layerId ? monitor.monitor.firstElement : monitor.monitor.secondElement
+    // get the element (targetLayer or secondElement) that corresponds to the event
+    const dataElement = data.layer === monitor.monitor.targetLayer.layerInfo.layerId ? monitor.monitor.targetLayer : monitor.monitor.secondElement
     const dataFilter = unescape(dataElement.filter) ?? {}
     // if the data matches the filter, we run the monitor
     if (find([data], dataFilter).all().length > 0) {
@@ -435,8 +435,8 @@ async function runMonitor (monitorObject) {
   if (escapedMonitorObject.secondElement.layerInfo) {
     monitorObject.secondElement.layerInfo = escapedMonitorObject.secondElement.layerInfo
   }
-  if (escapedMonitorObject.firstElement.layerInfo) {
-    monitorObject.firstElement.layerInfo = escapedMonitorObject.firstElement.layerInfo
+  if (escapedMonitorObject.targetLayer.layerInfo) {
+    monitorObject.targetLayer.layerInfo = escapedMonitorObject.targetLayer.layerInfo
   }
 
   // Determine the firing status of the monitor based on the evaluation result, but only if the monitor is successful

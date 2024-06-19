@@ -7,8 +7,8 @@ async function geoKatcherSchemaTest () {
   before(() => {
     app = this.app
     baseMonitorObject = {
-      firstElement: {
-        name: 'firstElement',
+      targetLayer: {
+        name: 'targetLayer',
         filter: {
           'properties.name': 'randomname'
         }
@@ -28,23 +28,23 @@ async function geoKatcherSchemaTest () {
     }
   })
 
-  it('a monitor with no firstElement/secondElement name should throw a BadRequest with message "firstElement/secondElement.name is required"', async () => {
-    await expectError(() => app.service('monitor').create({ firstElement: {} }), '"firstElement.name" is required')
-    await expectError(() => app.service('monitor').create({ firstElement: { name: 'firstElement' }, secondElement: {} }), '"secondElement.name" is required')
+  it('a monitor with no targetLayer/secondElement name should throw a BadRequest with message "targetLayer/secondElement.name is required"', async () => {
+    await expectError(() => app.service('monitor').create({ targetLayer: {} }), '"targetLayer.name" is required')
+    await expectError(() => app.service('monitor').create({ targetLayer: { name: 'targetLayer' }, secondElement: {} }), '"secondElement.name" is required')
   }).timeout(1000)
 
   it('a monitor with a monitor type that is not "cron"/"event" or "dryRun" should throw a BadRequest with message "monitor.type must be one of [cron, event, dryRun]"', async () => {
-    await expectError(() => app.service('monitor').create({ firstElement: { name: 'firstElement' }, secondElement: { name: 'secondElement' }, monitor: { type: 'xxx' } }), '"monitor.type" must be one of [cron, event, dryRun]')
+    await expectError(() => app.service('monitor').create({ targetLayer: { name: 'targetLayer' }, secondElement: { name: 'secondElement' }, monitor: { type: 'xxx' } }), '"monitor.type" must be one of [cron, event, dryRun]')
   }).timeout(1000)
 
   it('a monitor with no evaluation type should throw a BadRequest with message "monitor.evaluation.type is required"', async () => {
     await expectError(() =>
-      app.service('monitor').create({ firstElement: { name: 'firstElement' }, secondElement: { name: 'secondElement' }, monitor: { type: 'dryRun', evaluation: {} } }),
+      app.service('monitor').create({ targetLayer: { name: 'targetLayer' }, secondElement: { name: 'secondElement' }, monitor: { type: 'dryRun', evaluation: {} } }),
     '"monitor.evaluation.type" is required')
   }).timeout(1000)
 
   it('a monitor with an unknown evaluation type should throw a BadRequest with message "Unrecognized evaluation type"', async () => {
-    const data = { firstElement: { name: 'firstElement' }, secondElement: { name: 'secondElement' }, monitor: { type: 'dryRun', evaluation: { type: 'unknown' } } }
+    const data = { targetLayer: { name: 'targetLayer' }, secondElement: { name: 'secondElement' }, monitor: { type: 'dryRun', evaluation: { type: 'unknown' } } }
     await expectError(() => app.service('monitor').create(data), 'Unrecognized evaluation type')
   }).timeout(1000)
 
@@ -54,36 +54,36 @@ async function geoKatcherSchemaTest () {
     await expectError(() => app.service('monitor').create(monitorObject), '"monitor.evaluation.alertOn" must be one of [noData, data]')
   }).timeout(1000)
 
-  it('a monitor with a maxDistance or minDistance that is not a positive number should throw a BadRequest with message "monitor.evaluation.maxDistance/minDistance must be a positive number"', async () => {
+  it('a monitor with a maxDistance or minDistance that is not a positive number should throw a BadRequest with message "monitor.evaluation.maxDistance" must be greater than or equal to 0', async () => {
     const monitorObject = _.cloneDeep(baseMonitorObject)
     monitorObject.monitor.evaluation.maxDistance = -1
-    await expectError(() => app.service('monitor').create(monitorObject), '"monitor.evaluation.maxDistance" must be a positive number')
+    await expectError(() => app.service('monitor').create(monitorObject), '"monitor.evaluation.maxDistance" must be greater than or equal to 0')
     monitorObject.monitor.evaluation.maxDistance = 1
     monitorObject.monitor.evaluation.minDistance = -1
-    await expectError(() => app.service('monitor').create(monitorObject), '"monitor.evaluation.minDistance" must be a positive number')
+    await expectError(() => app.service('monitor').create(monitorObject), '"monitor.evaluation.minDistance" must be greater than or equal to 0')
   }).timeout(1000)
 
-  it('a monitor with a firstElement/secondElement name that does not exist should throw a BadRequest with message "firstElement/secondElement not found"', async () => {
+  it('a monitor with a targetLayer/secondElement name that does not exist should throw a BadRequest with message "targetLayer/secondElement not found"', async () => {
     const monitorObject = _.cloneDeep(baseMonitorObject)
-    monitorObject.firstElement.name = 'xxx'
+    monitorObject.targetLayer.name = 'xxx'
     await expectError(() => app.service('monitor').create(monitorObject), 'Layer not found')
 
-    monitorObject.firstElement.name = 'firstElement'
+    monitorObject.targetLayer.name = 'targetLayer'
     monitorObject.secondElement.name = 'xxx'
     await expectError(() => app.service('monitor').create(monitorObject), 'Layer not found')
   }).timeout(1000)
 
   it('a monitor wich is not a dryRun needs a name,a type and a trigger', async () => {
     // type
-    await expectError(() => app.service('monitor').create({ firstElement: { name: 'firstElement' }, secondElement: { name: 'secondElement' }, monitor: { evaluation: { type: 'geoIntersects' } } }),
+    await expectError(() => app.service('monitor').create({ targetLayer: { name: 'targetLayer' }, secondElement: { name: 'secondElement' }, monitor: { evaluation: { type: 'geoIntersects' } } }),
       '"monitor.type" is required')
 
     // name
-    await expectError(() => app.service('monitor').create({ firstElement: { name: 'firstElement' }, secondElement: { name: 'secondElement' }, monitor: { type: 'event', evaluation: { type: 'geoIntersects' } } }),
+    await expectError(() => app.service('monitor').create({ targetLayer: { name: 'targetLayer' }, secondElement: { name: 'secondElement' }, monitor: { type: 'event', evaluation: { type: 'geoIntersects' } } }),
       '"monitor.name" is required')
 
     // trigger
-    await expectError(() => app.service('monitor').create({ firstElement: { name: 'firstElement' }, secondElement: { name: 'secondElement' }, monitor: { type: 'event', name: 'monitor', evaluation: { type: 'geoIntersects' } } }),
+    await expectError(() => app.service('monitor').create({ targetLayer: { name: 'targetLayer' }, secondElement: { name: 'secondElement' }, monitor: { type: 'event', name: 'monitor', evaluation: { type: 'geoIntersects' } } }),
       '"monitor.trigger" is required')
   }).timeout(5000)
 

@@ -85,7 +85,7 @@ async function initTest() {
       // Feed the collections
       let data = fs.readJsonSync(path.join(__dirname, 'data/hubeau-hydro-stations.json'))
       await hubeauHydroStationsService.create(data)
-      data = fs.readJsonSync(path.join(__dirname, 'data/firstElementFeature.json'))
+      data = fs.readJsonSync(path.join(__dirname, 'data/targetLayerFeature.json'))
       await featuresService.create(data)
       data = fs.readJsonSync(path.join(__dirname, 'data/secondElementFeature.json'))
       await featuresService.create(data)

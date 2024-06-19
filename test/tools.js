@@ -40,3 +40,14 @@ export async function waitEvent(service, eventName,timeout = 3500) {
       }
     )
 }
+
+
+/**
+ * Asynchronously waits for a specified amount of time.
+ * 
+ * @param {number} [ms=9000000] - The time to wait in milliseconds.
+ * @returns {Promise<void>} A promise that resolves after the specified time has elapsed.
+ */
+export async function wait(ms = 9000000) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+}

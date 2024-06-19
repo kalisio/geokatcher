@@ -119,21 +119,21 @@ export async function initKano (app) {
     },
 
     /**
-     * Compare layers and check if each feature geometry inside the secondElement is inside the firstElement geometry.
-     * @param {Object} firstElementFeatureCollection - The feature collection of the first element.
+     * Compare layers and check if each feature geometry inside the secondElement is inside the targetLayer geometry.
+     * @param {Object} targetLayerFeatureCollection - The feature collection of the first element.
      * @param {Object} secondElementLayer - The layer object of the second element.
      * @param {Object} secondElementFilter - The filter to apply to the query.
      * @param {Object} monitor - The monitor object.
      * @returns {Promise<Object>} - The feature collection of the first element.
      * @throws {GeneralError} - If the query for the layer was limited by the service.
      */
-    async compareLayers (firstElementFeatureCollection, secondElementLayer, secondElementFilter, monitor) {
-      const firstElementFeatures = []
+    async compareLayers (targetLayerFeatureCollection, secondElementLayer, secondElementFilter, monitor) {
+      const targetLayerFeatures = []
       const collection = _.get(secondElementLayer, 'probeService', secondElementLayer.service)
       const service = app.services[stripSlashes(`${apiPath}/${collection}`)]
 
-      // For each feature geometry inside secondElement, we need to check if it is inside the firstElement geometry
-      await Promise.all(firstElementFeatureCollection.features.map(async (zone) => {
+      // For each feature geometry inside secondElement, we need to check if it is inside the targetLayer geometry
+      await Promise.all(targetLayerFeatureCollection.features.map(async (zone) => {
         let geometry
         let query = {}
         // We get the geometry query to inject in the query based on the evaluation type
@@ -166,10 +166,10 @@ export async function initKano (app) {
         }
         // We return the feature and the zone that intersect
         if (result.total > 0) {
-          firstElementFeatures.push({ firstElementFeatures: zone, secondElementFeatures: result.features.map((feature) => feature) })
+          targetLayerFeatures.push({ targetLayerFeatures: zone, secondElementFeatures: result.features.map((feature) => feature) })
         }
       }))
-      return firstElementFeatures
+      return targetLayerFeatures
     }
 
   }

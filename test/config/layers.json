@@ -296,7 +296,7 @@
   },
   {
     "_id": "663505dba7fdc7a10a15cfcd",
-    "name": "firstElement",
+    "name": "targetLayer",
     "type": "OverlayLayer",
     "icon": "insert_drive_file",
     "scope": "user",
