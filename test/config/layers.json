@@ -268,7 +268,7 @@
   },
   {
     "_id": "663505edc4224540960899ac",
-    "name": "secondElement",
+    "name": "zone",
     "type": "OverlayLayer",
     "icon": "insert_drive_file",
     "scope": "user",
@@ -296,7 +296,7 @@
   },
   {
     "_id": "663505dba7fdc7a10a15cfcd",
-    "name": "targetLayer",
+    "name": "target",
     "type": "OverlayLayer",
     "icon": "insert_drive_file",
     "scope": "user",

@@ -2,6 +2,7 @@ import _ from 'lodash'
 import makeDebug from 'debug'
 import { errors as ferrors } from '@feathersjs/errors'
 import { stripSlashes } from '@feathersjs/commons'
+import { convertToObjectId } from '../common/helper.js'
 
 const debug = makeDebug('geokatcher:providers:kano')
 
@@ -62,7 +63,8 @@ export async function initKano (app) {
             {
               $or: [
                 { name: `Layers.${name.toUpperCase()}` },
-                { name: name }
+                { name: name },
+                { _id: name }
               ]
             }
           ]
@@ -84,7 +86,7 @@ export async function initKano (app) {
      * @throws {ferrors.GeneralError} - If the query results were limited by the service.
      */
     async getLayerFeatures (layer, filter) {
-      if (!await kanoServiceAvailable()) {
+      if (!kanoServiceAvailable()) {
         throw new ferrors.Unavailable('Kano services are not ready')
       }
       if (!layer) {
@@ -119,63 +121,121 @@ export async function initKano (app) {
     },
 
     /**
-     * Compare layers and check if each feature geometry inside the secondElement is inside the targetLayer geometry.
-     * @param {Object} targetLayerFeatureCollection - The feature collection of the first element.
-     * @param {Object} secondElementLayer - The layer object of the second element.
-     * @param {Object} secondElementFilter - The filter to apply to the query.
+     * Compare layers and check if each feature geometry inside the zone is inside the target geometry.
+     * @param {Object} targetFeatureCollection - The feature collection of the target.
+     * @param {Object} zoneLayer - The layer object of the zone.
+     * @param {Object} zoneFilter - The filter to apply to the query.
      * @param {Object} monitor - The monitor object.
-     * @returns {Promise<Object>} - The feature collection of the first element.
+     * @returns {Promise<Object>} - The feature collection of the target.
      * @throws {GeneralError} - If the query for the layer was limited by the service.
      */
-    async compareLayers (targetLayerFeatureCollection, secondElementLayer, secondElementFilter, monitor) {
-      const targetLayerFeatures = []
-      const collection = _.get(secondElementLayer, 'probeService', secondElementLayer.service)
-      const service = app.services[stripSlashes(`${apiPath}/${collection}`)]
+    async compareLayers (targetFeatureCollection, zoneLayer, zoneFilter, monitor) {
+      let targetFeatures = []
 
-      // For each feature geometry inside secondElement, we need to check if it is inside the targetLayer geometry
-      await Promise.all(targetLayerFeatureCollection.features.map(async (zone) => {
-        let geometry
-        let query = {}
-        // We get the geometry query to inject in the query based on the evaluation type
-        try {
-          geometry = injectGeoQuery(monitor, zone)
-        } catch (err) {
-          if (err instanceof ferrors.NotAcceptable) {
-            app.logger.error(err.message)
-            return
-          }
-          // If we have an other error, we let the error propagate to the caller
-          throw err
-        }
-        if (secondElementFilter) {
-          query.$and = [
-            secondElementFilter,
-            geometry
-          ]
-        } else {
-          query = geometry
-        }
-        if (collection === 'features') {
-          query.layer = secondElementLayer._id
-        }
-
-        // console.log(`Query: ${JSON.stringify(query)} on collection ${collection}`)
-        const result = await service.find({ query: query })
-        if (result.total !== result.features.length) {
-          throw new ferrors.GeneralError('Query for the layer was limited by the service.', { layer: secondElementLayer.name, service: collection, total: result.total, returned: result.features.length })
-        }
-        // We return the feature and the zone that intersect
-        if (result.total > 0) {
-          targetLayerFeatures.push({ targetLayerFeatures: zone, secondElementFeatures: result.features.map((feature) => feature) })
-        }
-      }))
-      return targetLayerFeatures
+      targetFeatures = await compareWithMultiRequests(app, targetFeatureCollection, zoneLayer, zoneFilter, monitor)
+      // targetFeatures = await compareWithSingleRequest(app, targetFeatureCollection, zoneLayer, zoneFilter, monitor)
+      return targetFeatures
     }
-
   }
-}
 
-/**
+  async function compareWithMultiRequests (app, targetFeatureCollection, zoneLayer, zoneFilter, monitor) {
+    const time = new Date().getTime()
+    const targetFeatures = []
+    const collection = _.get(zoneLayer, 'probeService', zoneLayer.service)
+    const service = app.services[stripSlashes(`${apiPath}/${collection}`)]
+
+    // For each feature geometry inside zone, we need to check if it is inside the target geometry
+    await Promise.all(targetFeatureCollection.features.map(async (zone) => {
+      let geometry
+      let query = {}
+      // We get the geometry query to inject in the query based on the evaluation type
+      try {
+        geometry = injectGeoQuery(monitor, zone)
+      } catch (err) {
+        if (err instanceof ferrors.NotAcceptable) {
+          app.logger.error(err.message)
+          return
+        }
+        // If we have an other error, we let the error propagate to the caller
+        throw err
+      }
+      if (zoneFilter) {
+        query.$and = [
+          zoneFilter,
+          geometry
+        ]
+      } else {
+        query = geometry
+      }
+      if (collection === 'features') {
+        query.layer = zoneLayer._id
+      }
+
+      // console.log(`Query: ${JSON.stringify(query)} on collection ${collection}`)
+      const result = await service.find({ query: query })
+      if (result.total !== result.features.length) {
+        throw new ferrors.GeneralError('Query for the layer was limited by the service.', { layer: zoneLayer.name, service: collection, total: result.total, returned: result.features.length })
+      }
+      // We return the feature and the zone that intersect
+      if (result.total > 0) {
+        targetFeatures.push({ targetFeatures: zone, zoneFeatures: result.features.map((feature) => feature) })
+      }
+    }))
+    const time2 = new Date().getTime()
+    console.log(`Time to get the result: ${time2 - time} ms`)
+    return targetFeatures
+  }
+
+  async function compareWithSingleRequest (app, targetFeatureCollection, zoneLayer, zoneFilter, monitor) {
+    const time = new Date().getTime()
+    // instead of making a request for each feature in the targetFeatureCollection, we make a single request with all the geometries and $or operator
+    const targetFeatures = []
+    const collection = _.get(zoneLayer, 'probeService', zoneLayer.service)
+    const service = app.services[stripSlashes(`${apiPath}/${collection}`)]
+    const geometryQueries = targetFeatureCollection.features.map((zone) => {
+      let geometry
+      try {
+        geometry = injectGeoQuery(monitor, zone)
+      } catch (err) {
+        if (err instanceof ferrors.NotAcceptable) {
+          app.logger.error(err.message)
+          return
+        }
+        // If we have an other error, we let the error propagate to the caller
+        throw err
+      }
+      return geometry
+    })
+    let query = {}
+    if (zoneFilter) {
+      query.$and = [
+        zoneFilter,
+        { $or: geometryQueries }
+      ]
+    } else {
+      query = { $or: geometryQueries }
+    }
+    if (collection === 'features') {
+      query.layer = zoneLayer._id
+    }
+    // console.log(`Query: ${JSON.stringify(query)} on collection ${collection}`)
+    const result = await service.find({ query: query })
+    const time2 = new Date().getTime()
+    console.log(`Time to get the result: ${time2 - time} ms`)
+
+    console.log(`number of features in the result: ${result.total}`)
+    // if (result.total !== result.features.length) {
+    //   throw new ferrors.GeneralError('Query for the layer was limited by the service.', { layer: zoneLayer.name, service: collection, total: result.total, returned: result.features.length })
+    // }
+    // // We return the feature and the zone that intersect
+    // if (result.total > 0) {
+    //   targetFeatures.push({ targetFeatures: zone, zoneFeatures: result.features.map((feature) => feature) })
+    // }
+
+    return targetFeatures
+  }
+
+  /**
  * Injects a geometry query based on the evaluation type and feature.
  * @param {Object} monitor - The monitor object.
  * @param {Object} feature - The feature object.
@@ -183,72 +243,73 @@ export async function initKano (app) {
  * @throws {ferrors.NotAcceptable} - If the feature geometry type is invalid for the evaluation type.
  * @throws {ferrors.BadRequest} - If the evaluation type is unrecognized.
  */
-function injectGeoQuery (monitor, feature) {
-  let geometry
-  const evaluation = _.get(monitor, 'evaluation.type')
-  switch (evaluation) {
-    case 'geoWithin':
+  function injectGeoQuery (monitor, feature) {
+    let geometry
+    const evaluation = _.get(monitor, 'evaluation.type')
+    switch (evaluation) {
+      case 'geoWithin':
       // geoWithin can only be used with Polygon or MultiPolygon geometries
-      if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') {
-        throw new ferrors.NotAcceptable(`Invalid geometry type for evaluation type [${monitor.evaluation.type}] and zone [${feature.geometry.type}] : This zone will be ignored`)
-      }
-      geometry = {
-        geometry: {
-          $geoWithin: {
-            $geometry: feature.geometry
-          }
+        if (feature.geometry.type !== 'Polygon' && feature.geometry.type !== 'MultiPolygon') {
+          throw new ferrors.NotAcceptable(`Invalid geometry type for evaluation type [${monitor.evaluation.type}] and zone [${feature.geometry.type}] : This zone will be ignored`)
         }
-      }
-      break
-    case 'geoIntersects':
-      // geoIntersects can be used with any geometry type
-      geometry = {
-        geometry: {
-          $geoIntersects: {
-            $geometry: feature.geometry
-          }
-        }
-      }
-      break
-    case 'near':
-      // near can only be used with Point geometries
-      if (feature.geometry.type !== 'Point') {
-        throw new ferrors.NotAcceptable(`Invalid geometry type for evaluation type [${monitor.evaluation.type}] and zone [${feature.geometry.type}] : This zone will be ignored`)
-      }
-      monitor.evaluation.maxDistance = (typeof monitor.evaluation.maxDistance === 'number' ? monitor.evaluation.maxDistance : 1000)
-      monitor.evaluation.minDistance = (typeof monitor.evaluation.minDistance === 'number' ? monitor.evaluation.minDistance : 0)
-
-      geometry = {
-        $and: [
-          {
-            geometry: {
-              $geoWithin: {
-                $centerSphere: [feature.geometry.coordinates, monitor.evaluation.maxDistance / 6378137] // Earth radius as in radians
-              }
+        geometry = {
+          geometry: {
+            $geoWithin: {
+              $geometry: feature.geometry
             }
-          },
-          {
-            geometry: {
-              $not: {
+          }
+        }
+        break
+      case 'geoIntersects':
+      // geoIntersects can be used with any geometry type
+        geometry = {
+          geometry: {
+            $geoIntersects: {
+              $geometry: feature.geometry
+            }
+          }
+        }
+        break
+      case 'near':
+      // near can only be used with Point geometries
+        if (feature.geometry.type !== 'Point') {
+          throw new ferrors.NotAcceptable(`Invalid geometry type for evaluation type [${monitor.evaluation.type}] and zone [${feature.geometry.type}] : This zone will be ignored`)
+        }
+        monitor.evaluation.maxDistance = (typeof monitor.evaluation.maxDistance === 'number' ? monitor.evaluation.maxDistance : 1000)
+        monitor.evaluation.minDistance = (typeof monitor.evaluation.minDistance === 'number' ? monitor.evaluation.minDistance : 0)
+
+        geometry = {
+          $and: [
+            {
+              geometry: {
                 $geoWithin: {
-                  $centerSphere: [feature.geometry.coordinates, monitor.evaluation.minDistance / 6378137] // Earth radius as in radians
+                  $centerSphere: [feature.geometry.coordinates, monitor.evaluation.maxDistance / 6378137] // Earth radius as in radians
+                }
+              }
+            },
+            {
+              geometry: {
+                $not: {
+                  $geoWithin: {
+                    $centerSphere: [feature.geometry.coordinates, monitor.evaluation.minDistance / 6378137] // Earth radius as in radians
+                  }
                 }
               }
             }
-          }
-        ]
-      }
-      // geometry = {
-      //   geometry: {
-      //     $geoWithin: {
-      //       $centerSphere: [feature.geometry.coordinates, monitor.evaluation.maxDistance / 6378137] // Earth radius as in radians
-      //     }
-      //   }
-      // }
+          ]
+        }
+        // geometry = {
+        //   geometry: {
+        //     $geoWithin: {
+        //       $centerSphere: [feature.geometry.coordinates, monitor.evaluation.maxDistance / 6378137] // Earth radius as in radians
+        //     }
+        //   }
+        // }
 
-      break
-    default:
-      throw new ferrors.BadRequest('Unrecognized evaluation type', { evaluation: evaluation })
+        break
+      default:
+        throw new ferrors.BadRequest('Unrecognized evaluation type', { evaluation: evaluation })
+    }
+    return geometry
   }
-  return geometry
 }

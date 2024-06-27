@@ -7,14 +7,14 @@ async function geoKatcherSchemaTest () {
   before(() => {
     app = this.app
     baseMonitorObject = {
-      targetLayer: {
-        name: 'targetLayer',
+      target: {
+        name: 'target',
         filter: {
           'properties.name': 'randomname'
         }
       },
-      secondElement: {
-        name: 'secondElement'
+      zone: {
+        name: 'zone'
       },
       monitor: {
         type: 'event',
@@ -28,23 +28,23 @@ async function geoKatcherSchemaTest () {
     }
   })
 
-  it('a monitor with no targetLayer/secondElement name should throw a BadRequest with message "targetLayer/secondElement.name is required"', async () => {
-    await expectError(() => app.service('monitor').create({ targetLayer: {} }), '"targetLayer.name" is required')
-    await expectError(() => app.service('monitor').create({ targetLayer: { name: 'targetLayer' }, secondElement: {} }), '"secondElement.name" is required')
+  it('a monitor with no target/zone name should throw a BadRequest with message "target/zone.name is required"', async () => {
+    await expectError(() => app.service('monitor').create({ target: {} }), '"target.name" is required')
+    await expectError(() => app.service('monitor').create({ target: { name: 'target' }, zone: {} }), '"zone.name" is required')
   }).timeout(1000)
 
   it('a monitor with a monitor type that is not "cron"/"event" or "dryRun" should throw a BadRequest with message "monitor.type must be one of [cron, event, dryRun]"', async () => {
-    await expectError(() => app.service('monitor').create({ targetLayer: { name: 'targetLayer' }, secondElement: { name: 'secondElement' }, monitor: { type: 'xxx' } }), '"monitor.type" must be one of [cron, event, dryRun]')
+    await expectError(() => app.service('monitor').create({ target: { name: 'target' }, zone: { name: 'zone' }, monitor: { type: 'xxx' } }), '"monitor.type" must be one of [cron, event, dryRun]')
   }).timeout(1000)
 
   it('a monitor with no evaluation type should throw a BadRequest with message "monitor.evaluation.type is required"', async () => {
     await expectError(() =>
-      app.service('monitor').create({ targetLayer: { name: 'targetLayer' }, secondElement: { name: 'secondElement' }, monitor: { type: 'dryRun', evaluation: {} } }),
+      app.service('monitor').create({ target: { name: 'target' }, zone: { name: 'zone' }, monitor: { type: 'dryRun', evaluation: {} } }),
     '"monitor.evaluation.type" is required')
   }).timeout(1000)
 
   it('a monitor with an unknown evaluation type should throw a BadRequest with message "Unrecognized evaluation type"', async () => {
-    const data = { targetLayer: { name: 'targetLayer' }, secondElement: { name: 'secondElement' }, monitor: { type: 'dryRun', evaluation: { type: 'unknown' } } }
+    const data = { target: { name: 'target' }, zone: { name: 'zone' }, monitor: { type: 'dryRun', evaluation: { type: 'unknown' } } }
     await expectError(() => app.service('monitor').create(data), 'Unrecognized evaluation type')
   }).timeout(1000)
 
@@ -63,27 +63,27 @@ async function geoKatcherSchemaTest () {
     await expectError(() => app.service('monitor').create(monitorObject), '"monitor.evaluation.minDistance" must be greater than or equal to 0')
   }).timeout(1000)
 
-  it('a monitor with a targetLayer/secondElement name that does not exist should throw a BadRequest with message "targetLayer/secondElement not found"', async () => {
+  it('a monitor with a target/zone name that does not exist should throw a BadRequest with message "target/zone not found"', async () => {
     const monitorObject = _.cloneDeep(baseMonitorObject)
-    monitorObject.targetLayer.name = 'xxx'
+    monitorObject.target.name = 'xxx'
     await expectError(() => app.service('monitor').create(monitorObject), 'Layer not found')
 
-    monitorObject.targetLayer.name = 'targetLayer'
-    monitorObject.secondElement.name = 'xxx'
+    monitorObject.target.name = 'target'
+    monitorObject.zone.name = 'xxx'
     await expectError(() => app.service('monitor').create(monitorObject), 'Layer not found')
   }).timeout(1000)
 
   it('a monitor wich is not a dryRun needs a name,a type and a trigger', async () => {
     // type
-    await expectError(() => app.service('monitor').create({ targetLayer: { name: 'targetLayer' }, secondElement: { name: 'secondElement' }, monitor: { evaluation: { type: 'geoIntersects' } } }),
+    await expectError(() => app.service('monitor').create({ target: { name: 'target' }, zone: { name: 'zone' }, monitor: { evaluation: { type: 'geoIntersects' } } }),
       '"monitor.type" is required')
 
     // name
-    await expectError(() => app.service('monitor').create({ targetLayer: { name: 'targetLayer' }, secondElement: { name: 'secondElement' }, monitor: { type: 'event', evaluation: { type: 'geoIntersects' } } }),
+    await expectError(() => app.service('monitor').create({ target: { name: 'target' }, zone: { name: 'zone' }, monitor: { type: 'event', evaluation: { type: 'geoIntersects' } } }),
       '"monitor.name" is required')
 
     // trigger
-    await expectError(() => app.service('monitor').create({ targetLayer: { name: 'targetLayer' }, secondElement: { name: 'secondElement' }, monitor: { type: 'event', name: 'monitor', evaluation: { type: 'geoIntersects' } } }),
+    await expectError(() => app.service('monitor').create({ target: { name: 'target' }, zone: { name: 'zone' }, monitor: { type: 'event', name: 'monitor', evaluation: { type: 'geoIntersects' } } }),
       '"monitor.trigger" is required')
   }).timeout(5000)
 

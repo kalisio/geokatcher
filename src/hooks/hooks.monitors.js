@@ -36,13 +36,8 @@ export async function checkIfNameAlreadyExists (hook) {
     .filter((monitor) => monitor._id.toString() !== hook.id.toString())
     .length > 0
 
-  // we can't create a monitor with the same name
-  if (OtherMonitorExist && hook.event === 'created') {
-    throw new ferrors.Conflict('Monitor with the same name already exists', { monitor: monitorName })
-  }
-
   // we can't update a monitor to have the same name as another monitor
-  if (OtherMonitorExist && ['updated', 'patched'].includes(hook.event)) {
+  if (OtherMonitorExist) {
     throw new ferrors.Conflict('Monitor with the same name already exists', { monitor: monitorName })
   }
 

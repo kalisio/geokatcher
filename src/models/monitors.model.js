@@ -26,12 +26,12 @@ const monitorsModel = {
     const Schema = mongoose.Schema
     const monitorsSchema = new Schema(
       {
-        targetLayer: {
+        target: {
           name: { type: String, required: true },
           filter: { type: Object, required: false },
           layerInfo: { type: Object, required: false }
         },
-        secondElement: {
+        zone: {
           name: { type: String, required: true },
           filter: { type: Object, required: false },
           layerInfo: { type: Object, required: false }
@@ -89,56 +89,71 @@ const monitorsModel = {
   async evaluate (monitorObject, throwError = false) {
     const data = {}
     let error
-    let targetLayerLayer
-    let secondElementLayer
-    let targetLayerFeatureCollection
+    let targetLayer
+    let zoneLayer
+    let zoneFeatureCollection
     try {
       // If the source isn't inRequest, we need to get the layer data from the provider (Kano)
-      if (_.get(monitorObject.targetLayer, 'source') !== 'inRequest') {
-        targetLayerLayer = await this.kano.getLayerData(monitorObject.targetLayer.name).catch((err) => {
+      if (_.get(monitorObject.target, 'source') !== 'inRequest') {
+        targetLayer = await this.kano.getLayerData(monitorObject.target.name).catch((err) => {
           throw err
         })
 
         // If the layer is not found, we stop the evaluation, the error is already thrown
-        if (!targetLayerLayer) {
+        if (!targetLayer) {
           return
         }
-        targetLayerFeatureCollection = await this.kano.getLayerFeatures(
-          targetLayerLayer,
-          monitorObject.targetLayer.filter
-        )
-        // If the feature collection is empty, we stop the evaluation, there won't be any data to compare
-        if (!targetLayerFeatureCollection.features) {
-          return
-        }
+        // targetFeatureCollection = await this.kano.getLayerFeatures(
+        //   targetLayer,
+        //   monitorObject.target.filter
+        // )
+        // // If the feature collection is empty, we stop the evaluation, there won't be any data to compare
+        // if (!targetFeatureCollection.features) {
+        //   return
+        // }
         // The Kano service and layerId are added to the monitorObject to be able to use them for future events on the service
-        monitorObject.targetLayer.layerInfo = {
-          kanoService: _.get(targetLayerLayer, 'probeService', targetLayerLayer.service),
-          layerId: targetLayerLayer._id
+        monitorObject.target.layerInfo = {
+          kanoService: _.get(targetLayer, 'probeService', targetLayer.service),
+          layerId: targetLayer._id
         }
       }
       // If the source isn't inRequest, we need to get the layer data from the provider (Kano)
-      if (_.get(monitorObject.secondElement, 'source') !== 'inRequest') {
-        secondElementLayer = await this.kano.getLayerData(monitorObject.secondElement.name).catch((err) => {
+      if (_.get(monitorObject.zone, 'source') !== 'inRequest') {
+        zoneLayer = await this.kano.getLayerData(monitorObject.zone.name).catch((err) => {
           throw err
         })
         // If the layer is not found, we stop the evaluation, the error is already thrown
-        if (!secondElementLayer) {
+        if (!zoneLayer) {
+          return
+        }
+
+        zoneFeatureCollection = await this.kano.getLayerFeatures(
+          zoneLayer,
+          monitorObject.zone.filter
+        )
+        // If the feature collection is empty, we stop the evaluation, there won't be any data to compare
+        if (!zoneFeatureCollection.features) {
           return
         }
 
         // The Kano service and layerId are added to the monitorObject to be able to use them for future events on the service
-        monitorObject.secondElement.layerInfo = {
-          kanoService: _.get(secondElementLayer, 'probeService', secondElementLayer.service),
-          layerId: secondElementLayer._id
+        monitorObject.zone.layerInfo = {
+          kanoService: _.get(zoneLayer, 'probeService', zoneLayer.service),
+          layerId: zoneLayer._id
         }
       }
 
       // Compare the two layers and return the data that match the evaluation
+      // data.result = await this.kano.compareLayers(
+      //   targetFeatureCollection,
+      //   zoneLayer,
+      //   monitorObject.zone.filter,
+      //   monitorObject.monitor
+      // )
       data.result = await this.kano.compareLayers(
-        targetLayerFeatureCollection,
-        secondElementLayer,
-        monitorObject.secondElement.filter,
+        zoneFeatureCollection,
+        targetLayer,
+        monitorObject.target.filter,
         monitorObject.monitor
       )
     } catch (err) {
@@ -184,24 +199,24 @@ const monitorsModel = {
 
     if (monitorObject.monitor.type === 'event') {
       const apiPath = this.app.get('apiPath')
-      const targetLayerServiceName = _.get(monitorObject, 'targetLayer.layerInfo.kanoService', null)
-      const secondElementServiceName = _.get(monitorObject, 'secondElement.layerInfo.kanoService', null)
+      const targetServiceName = _.get(monitorObject, 'target.layerInfo.kanoService', null)
+      const zoneServiceName = _.get(monitorObject, 'zone.layerInfo.kanoService', null)
       const apiPathSlash = stripSlashes(apiPath)
-      const targetLayerService = this.app.services[`${apiPathSlash}/${targetLayerServiceName}`]
-      const secondElementService = this.app.services[`${apiPathSlash}/${secondElementServiceName}`]
+      const targetService = this.app.services[`${apiPathSlash}/${targetServiceName}`]
+      const zoneService = this.app.services[`${apiPathSlash}/${zoneServiceName}`]
 
-      if (!this.activeServices.includes(targetLayerServiceName)) {
-        this.activeServices.push(targetLayerServiceName)
+      if (!this.activeServices.includes(targetServiceName)) {
+        this.activeServices.push(targetServiceName)
         this.allowedEvents.forEach((event) => {
-          targetLayerService.on(event, async (data) => {
+          targetService.on(event, async (data) => {
             handleServiceEvents(this, data, event)
           })
         })
       }
-      if (!this.activeServices.includes(secondElementServiceName)) {
-        this.activeServices.push(secondElementServiceName)
+      if (!this.activeServices.includes(zoneServiceName)) {
+        this.activeServices.push(zoneServiceName)
         this.allowedEvents.forEach((event) => {
-          secondElementService.on(event, async (data) => {
+          zoneService.on(event, async (data) => {
             handleServiceEvents(this, data, event)
           })
         })
@@ -298,7 +313,7 @@ const monitorsModel = {
             type: 'Feature',
             geometry: {
               type: 'GeometryCollection',
-              geometries: [data[0].targetLayerFeatures.geometry].concat(data[0].secondElementFeatures.map((feature) => feature.geometry))
+              geometries: [data[0].targetFeatures.geometry].concat(data[0].zoneFeatures.map((feature) => feature.geometry))
             },
             properties: {
               name: monitor.name,
@@ -392,18 +407,18 @@ async function handleServiceEvents (monitorsModel, data, event) {
   const activeEventMonitors = Object.values(monitorsModel.activeMonitors).filter(monitor => monitor.monitor.monitor.type === 'event' && monitor.monitor.monitor.trigger.includes(event))
   // Only get the monitors that are of type event and that have the event in their trigger
   for (const monitor of activeEventMonitors) {
-    if (serviceName !== monitor.monitor.targetLayer.layerInfo.kanoService && serviceName !== monitor.monitor.secondElement.layerInfo.kanoService) {
+    if (serviceName !== monitor.monitor.target.layerInfo.kanoService && serviceName !== monitor.monitor.zone.layerInfo.kanoService) {
       // if the service name is not the one we are looking for, we skip it
       continue
     }
 
-    if (serviceName === 'features' && (data.layer !== monitor.monitor.targetLayer.layerInfo.layerId && data.layer !== monitor.monitor.secondElement.layerInfo.layerId)) {
+    if (serviceName === 'features' && (data.layer !== monitor.monitor.target.layerInfo.layerId && data.layer !== monitor.monitor.zone.layerInfo.layerId)) {
       // if the service is "features" and the layers are not the ones we are looking for, we skip it
       continue
     }
 
-    // get the element (targetLayer or secondElement) that corresponds to the event
-    const dataElement = data.layer === monitor.monitor.targetLayer.layerInfo.layerId ? monitor.monitor.targetLayer : monitor.monitor.secondElement
+    // get the element (target or zone) that corresponds to the event
+    const dataElement = data.layer === monitor.monitor.target.layerInfo.layerId ? monitor.monitor.target : monitor.monitor.zone
     const dataFilter = unescape(dataElement.filter) ?? {}
     // if the data matches the filter, we run the monitor
     if (find([data], dataFilter).all().length > 0) {
@@ -432,11 +447,11 @@ async function runMonitor (monitorObject) {
   monitorObject.monitor.lastRun = escapedMonitorObject.monitor.lastRun
 
   // Update the layerInfos in case they were not present / updated
-  if (escapedMonitorObject.secondElement.layerInfo) {
-    monitorObject.secondElement.layerInfo = escapedMonitorObject.secondElement.layerInfo
+  if (escapedMonitorObject.zone.layerInfo) {
+    monitorObject.zone.layerInfo = escapedMonitorObject.zone.layerInfo
   }
-  if (escapedMonitorObject.targetLayer.layerInfo) {
-    monitorObject.targetLayer.layerInfo = escapedMonitorObject.targetLayer.layerInfo
+  if (escapedMonitorObject.target.layerInfo) {
+    monitorObject.target.layerInfo = escapedMonitorObject.target.layerInfo
   }
 
   // Determine the firing status of the monitor based on the evaluation result, but only if the monitor is successful
