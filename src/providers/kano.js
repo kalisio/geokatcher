@@ -157,7 +157,7 @@ export async function initKano (app) {
         if (collection === 'features') {
           query.layer = zoneLayer._id
         }
-  
+
         // console.log(`Query: ${JSON.stringify(query)} on collection ${collection}`)
         const result = await service.find({ query: query })
         if (result.total !== result.features.length) {

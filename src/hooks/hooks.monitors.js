@@ -207,7 +207,6 @@ export async function resetMonitor (hook) {
   return hook
 }
 
-
 /**
  * Convert the values to the correct type (boolean, number, etc.)
  * @param {any} value The value to convert
