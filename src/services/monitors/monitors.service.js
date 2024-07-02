@@ -20,9 +20,9 @@ export default function async (app) {
    
    app.use('monitor', createService(options));
    app.service('monitor').hooks(hooks)
+   monitorsModel.kano = app.get('kano');
    
    app.on('kano:ready', () => {
-      monitorsModel.kano = app.get('kano');
       monitorsModel.startExistingMonitors();
    });
 

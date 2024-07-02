@@ -1,5 +1,5 @@
 # Use a builder
-FROM node:16-bookworm-slim AS builder
+FROM node:20-bookworm-slim AS builder
 
 COPY . /geokatcher
 WORKDIR /geokatcher
@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install --yes git
 RUN yarn install
 
 # Copy build to slim image
-FROM node:16-bookworm-slim
+FROM node:20-bookworm-slim
 
 LABEL maintainer "<contact@kalisio.xyz>"
 COPY --from=builder --chown=node:node /geokatcher /geokatcher

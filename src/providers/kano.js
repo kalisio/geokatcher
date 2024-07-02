@@ -2,7 +2,6 @@ import _ from 'lodash'
 import makeDebug from 'debug'
 import { errors as ferrors } from '@feathersjs/errors'
 import { stripSlashes } from '@feathersjs/commons'
-import { convertToObjectId } from '../common/helper.js'
 
 const debug = makeDebug('geokatcher:providers:kano')
 
@@ -47,7 +46,7 @@ export async function initKano (app) {
       if (!name) {
         throw new ferrors.BadRequest('Layer name is required')
       }
-      if (!await kanoServiceAvailable()) {
+      if (!kanoServiceAvailable()) {
         throw new ferrors.Unavailable('Kano services are not ready')
       }
       const catalog = app.service(`${apiPath}/catalog`)
@@ -130,109 +129,47 @@ export async function initKano (app) {
      * @throws {GeneralError} - If the query for the layer was limited by the service.
      */
     async compareLayers (targetFeatureCollection, zoneLayer, zoneFilter, monitor) {
-      let targetFeatures = []
-
-      targetFeatures = await compareWithMultiRequests(app, targetFeatureCollection, zoneLayer, zoneFilter, monitor)
-      // targetFeatures = await compareWithSingleRequest(app, targetFeatureCollection, zoneLayer, zoneFilter, monitor)
+      const targetFeatures = []
+      const collection = _.get(zoneLayer, 'probeService', zoneLayer.service)
+      const service = app.services[stripSlashes(`${apiPath}/${collection}`)]
+      await Promise.all(targetFeatureCollection.features.map(async (zone) => {
+        let geometry
+        let query = {}
+        // We get the geometry query to inject in the query based on the evaluation type
+        try {
+          geometry = injectGeoQuery(monitor, zone)
+        } catch (err) {
+          if (err instanceof ferrors.NotAcceptable) {
+            app.logger.error(err.message)
+            return
+          }
+          // If we have an other error, we let the error propagate to the caller
+          throw err
+        }
+        if (zoneFilter) {
+          query.$and = [
+            zoneFilter,
+            geometry
+          ]
+        } else {
+          query = geometry
+        }
+        if (collection === 'features') {
+          query.layer = zoneLayer._id
+        }
+  
+        // console.log(`Query: ${JSON.stringify(query)} on collection ${collection}`)
+        const result = await service.find({ query: query })
+        if (result.total !== result.features.length) {
+          throw new ferrors.GeneralError('Query for the layer was limited by the service.', { layer: zoneLayer.name, service: collection, total: result.total, returned: result.features.length })
+        }
+        // We return the feature and the zone that intersect
+        if (result.total > 0) {
+          targetFeatures.push({ targetFeatures: zone, zoneFeatures: result.features.map((feature) => feature) })
+        }
+      }))
       return targetFeatures
     }
-  }
-
-  async function compareWithMultiRequests (app, targetFeatureCollection, zoneLayer, zoneFilter, monitor) {
-    const time = new Date().getTime()
-    const targetFeatures = []
-    const collection = _.get(zoneLayer, 'probeService', zoneLayer.service)
-    const service = app.services[stripSlashes(`${apiPath}/${collection}`)]
-
-    // For each feature geometry inside zone, we need to check if it is inside the target geometry
-    await Promise.all(targetFeatureCollection.features.map(async (zone) => {
-      let geometry
-      let query = {}
-      // We get the geometry query to inject in the query based on the evaluation type
-      try {
-        geometry = injectGeoQuery(monitor, zone)
-      } catch (err) {
-        if (err instanceof ferrors.NotAcceptable) {
-          app.logger.error(err.message)
-          return
-        }
-        // If we have an other error, we let the error propagate to the caller
-        throw err
-      }
-      if (zoneFilter) {
-        query.$and = [
-          zoneFilter,
-          geometry
-        ]
-      } else {
-        query = geometry
-      }
-      if (collection === 'features') {
-        query.layer = zoneLayer._id
-      }
-
-      // console.log(`Query: ${JSON.stringify(query)} on collection ${collection}`)
-      const result = await service.find({ query: query })
-      if (result.total !== result.features.length) {
-        throw new ferrors.GeneralError('Query for the layer was limited by the service.', { layer: zoneLayer.name, service: collection, total: result.total, returned: result.features.length })
-      }
-      // We return the feature and the zone that intersect
-      if (result.total > 0) {
-        targetFeatures.push({ targetFeatures: zone, zoneFeatures: result.features.map((feature) => feature) })
-      }
-    }))
-    const time2 = new Date().getTime()
-    console.log(`Time to get the result: ${time2 - time} ms`)
-    return targetFeatures
-  }
-
-  async function compareWithSingleRequest (app, targetFeatureCollection, zoneLayer, zoneFilter, monitor) {
-    const time = new Date().getTime()
-    // instead of making a request for each feature in the targetFeatureCollection, we make a single request with all the geometries and $or operator
-    const targetFeatures = []
-    const collection = _.get(zoneLayer, 'probeService', zoneLayer.service)
-    const service = app.services[stripSlashes(`${apiPath}/${collection}`)]
-    const geometryQueries = targetFeatureCollection.features.map((zone) => {
-      let geometry
-      try {
-        geometry = injectGeoQuery(monitor, zone)
-      } catch (err) {
-        if (err instanceof ferrors.NotAcceptable) {
-          app.logger.error(err.message)
-          return
-        }
-        // If we have an other error, we let the error propagate to the caller
-        throw err
-      }
-      return geometry
-    })
-    let query = {}
-    if (zoneFilter) {
-      query.$and = [
-        zoneFilter,
-        { $or: geometryQueries }
-      ]
-    } else {
-      query = { $or: geometryQueries }
-    }
-    if (collection === 'features') {
-      query.layer = zoneLayer._id
-    }
-    // console.log(`Query: ${JSON.stringify(query)} on collection ${collection}`)
-    const result = await service.find({ query: query })
-    const time2 = new Date().getTime()
-    console.log(`Time to get the result: ${time2 - time} ms`)
-
-    console.log(`number of features in the result: ${result.total}`)
-    // if (result.total !== result.features.length) {
-    //   throw new ferrors.GeneralError('Query for the layer was limited by the service.', { layer: zoneLayer.name, service: collection, total: result.total, returned: result.features.length })
-    // }
-    // // We return the feature and the zone that intersect
-    // if (result.total > 0) {
-    //   targetFeatures.push({ targetFeatures: zone, zoneFeatures: result.features.map((feature) => feature) })
-    // }
-
-    return targetFeatures
   }
 
   /**
