@@ -29,17 +29,16 @@ export function parseQuery (hook) {
 export async function checkIfNameAlreadyExists (hook) {
   const monitorName = _.get(hook, 'data.monitor.name')
 
-  // we check if a monitor with the same name already exists
-  const OtherMonitorExist = (await hook.service.find({ 'monitor.name': monitorName }))
-    // we remove the monitor that is currently being created/updated from the list
-    // we do that outside of the query to work around the error "Can't use params" when using $ne
-    .filter((monitor) => monitor._id.toString() !== hook.id.toString())
-    .length > 0
+  // Get all the monitors with the same name
+  let OtherMonitors = await hook.service.find({ query: { 'monitor.name': monitorName } })
+  // Remove the current monitor from the list
+  OtherMonitors = OtherMonitors.filter((monitor) => monitor._id.toString() !== hook.id.toString())
 
-  // we can't update a monitor to have the same name as another monitor
-  if (OtherMonitorExist) {
+  // If there are other monitors with the same name, we throw an error
+  if (OtherMonitors.length > 0) {
     throw new ferrors.Conflict('Monitor with the same name already exists', { monitor: monitorName })
   }
+
 
   return hook
 }
