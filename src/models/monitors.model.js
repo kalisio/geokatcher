@@ -274,9 +274,9 @@ const monitorsModel = {
 
     const actionInfo = {
       url: action.url,
-      method: _.get(action, 'customProperties.method', 'POST'),
-      body: _.get(action, 'customProperties.body', {}),
-      headers: _.get(action, 'customProperties.headers', { 'Content-Type': 'application/json' })
+      method: _.get(action, 'additionalProperties.method', 'POST'),
+      body: _.get(action, 'additionalProperties.body', {}),
+      headers: _.get(action, 'additionalProperties.headers', { 'Content-Type': 'application/json' })
     } // we will store the default action info here to send it at the end
 
     if (action.type === 'slack-webhook') {
@@ -298,14 +298,14 @@ const monitorsModel = {
       }
     }
     if (action.type === 'crisis-webhook') {
-      actionInfo.body = { organisation: action.crisisProperties.organisation }
-      actionInfo.headers.Authorization = 'Bearer ' + action.crisisProperties.token
+      actionInfo.body = { organisation: action.additionalProperties.organisation }
+      actionInfo.headers.Authorization = 'Bearer ' + action.additionalProperties.token
       // On firing, we create a crisis event
       if (status === 'firing') {
         actionInfo.body.data = {
-          template: action.crisisProperties.data.template,
-          name: action.crisisProperties.data.name || monitor.name,
-          description: action.crisisProperties.data.description || monitor.description
+          template: action.additionalProperties.data.template,
+          name: action.additionalProperties.data.name || monitor.name,
+          description: action.additionalProperties.data.description || monitor.description
         }
         // we add the location if the data is not empty
         if (data.length > 0) {
@@ -326,7 +326,7 @@ const monitorsModel = {
       } else if (status === 'no longer firing') {
         // On "no longer firing", we close the crisis event
         actionInfo.body.operation = 'remove'
-        actionInfo.body.id = action.crisisProperties.knownAlertId
+        actionInfo.body.id = action.additionalProperties.knownAlertId
         // remove the knownAlertId from the monitor
         delete monitor.lastRun.knownAlertId
       } else {
@@ -356,9 +356,9 @@ const monitorsModel = {
       debug('Error while sending %s for monitor %s: %s', action.type, monitor.name, res.statusText)
     }
     // if the action was crisis-webhook and the status was firing, we store the knownAlertId in the monitor
-    if (action.type === 'crisis-webhook' && status === 'firing') {
+    else if (action.type === 'crisis-webhook' && status === 'firing') {
       const response = await res.json()
-      monitor.action.crisisProperties.knownAlertId = response._id
+      monitor.action.additionalProperties.knownAlertId = response._id
     }
     // we update the lastActionRun date
     monitor.lastRun.lastActionRun = now
