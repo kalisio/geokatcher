@@ -354,9 +354,8 @@ const monitorsModel = {
       const responseText = await res.text()
       this.app.logger.error(`Error while sending ${action.type} for monitor ${monitor.name}: ${res.statusText} - ${responseText}`)
       debug('Error while sending %s for monitor %s: %s', action.type, monitor.name, res.statusText)
-    }
-    // if the action was crisis-webhook and the status was firing, we store the knownAlertId in the monitor
-    else if (action.type === 'crisis-webhook' && status === 'firing') {
+    } else if (action.type === 'crisis-webhook' && status === 'firing') {
+      // if the action was crisis-webhook and the status was firing, we store the knownAlertId in the monitor
       const response = await res.json()
       monitor.action.additionalProperties.knownAlertId = response._id
     }

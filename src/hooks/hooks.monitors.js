@@ -39,7 +39,6 @@ export async function checkIfNameAlreadyExists (hook) {
     throw new ferrors.Conflict('Monitor with the same name already exists', { monitor: monitorName })
   }
 
-
   return hook
 }
 /**
