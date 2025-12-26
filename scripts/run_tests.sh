@@ -40,7 +40,7 @@ done
 ## Init workspace
 ##
 
-. "$WORKSPACE_DIR/development/workspaces/services/services.sh" geokoder
+. "$WORKSPACE_DIR/development/workspaces/services/services.sh" geokatcher
 
 ## Run tests
 ##
